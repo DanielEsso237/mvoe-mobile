@@ -2,30 +2,202 @@ import { Colors } from "@/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
 import { useNavigation } from "expo-router";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useState } from "react";
+import {
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
+} from "react-native";
+
+interface Cohorte {
+  id: string;
+  nom: string;
+  delegation: string;
+  facilitateur: string;
+  inscrits: number;
+  plafond: number;
+}
+
+const RATIO_OPTIONS = [10, 15, 20, 25];
+
+// TODO: brancher sur le serveur — données de démonstration en attendant.
+const MOCK_COHORTES: Cohorte[] = [
+  {
+    id: "mardi",
+    nom: "Ebolowa II — groupe du mardi",
+    delegation: "Ebolowa II",
+    facilitateur: "Ndzana Étienne",
+    inscrits: 20,
+    plafond: 20,
+  },
+  {
+    id: "vendredi",
+    nom: "Ebolowa II — groupe du vendredi",
+    delegation: "Ebolowa II",
+    facilitateur: "Ateba Marie-Claire",
+    inscrits: 23,
+    plafond: 20,
+  },
+  {
+    id: "samedi",
+    nom: "Ebolowa II — groupe du samedi",
+    delegation: "Ebolowa II",
+    facilitateur: "Ndzana Léonie",
+    inscrits: 15,
+    plafond: 20,
+  },
+  {
+    id: "lundi",
+    nom: "Ebolowa II — groupe du lundi",
+    delegation: "Ebolowa II",
+    facilitateur: "Ndzana Étienne",
+    inscrits: 20,
+    plafond: 20,
+  },
+];
 
 export default function ParametresScreen() {
   const navigation = useNavigation<DrawerNavigationProp<any>>();
+  const [plafonds, setPlafonds] = useState<Record<string, number>>(() =>
+    MOCK_COHORTES.reduce<Record<string, number>>((acc, c) => {
+      acc[c.id] = c.plafond;
+      return acc;
+    }, {}),
+  );
+
   return (
     <View style={styles.root}>
+      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => navigation.openDrawer()}
           style={styles.menuBtn}
+          hitSlop={10}
         >
           <Ionicons name="menu" size={22} color={Colors.white} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Paramètres</Text>
+        <Text style={styles.headerTitle}>Mvoé</Text>
+        <View style={styles.headerRight}>
+          <TouchableOpacity hitSlop={10} style={styles.iconBtn}>
+            <Ionicons
+              name="sunny-outline"
+              size={20}
+              color="rgba(255,255,255,0.8)"
+            />
+          </TouchableOpacity>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>D</Text>
+          </View>
+        </View>
       </View>
-      <View style={styles.center}>
-        <Text style={styles.placeholder}>Paramètres — à venir</Text>
-      </View>
+
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Titre */}
+        <Text style={styles.pageTitle}>Paramètres des cohortes</Text>
+        <Text style={styles.pageSubtitle}>
+          Le plafond d&apos;une cohorte se change ici, et prend effet
+          immédiatement.
+        </Text>
+
+        {MOCK_COHORTES.map((cohorte) => {
+          const plafond = plafonds[cohorte.id] ?? cohorte.plafond;
+          const places = Math.max(plafond - cohorte.inscrits, 0);
+          const exces = cohorte.inscrits - plafond;
+
+          return (
+            <View key={cohorte.id} style={styles.card}>
+              <Text style={styles.cohorteTitle}>{cohorte.nom}</Text>
+              <Text style={styles.cohorteSubtitle}>
+                {cohorte.delegation} · {cohorte.facilitateur}
+              </Text>
+
+              <View style={styles.statsRow}>
+                <View style={styles.statItem}>
+                  <Text style={styles.statLabel}>Inscrits</Text>
+                  <Text style={styles.statValue}>{cohorte.inscrits}</Text>
+                </View>
+                <View style={styles.statItem}>
+                  <Text style={styles.statLabel}>Plafond</Text>
+                  <Text style={styles.statValue}>{plafond}</Text>
+                </View>
+                <View style={styles.statItem}>
+                  <Text style={styles.statLabel}>Places</Text>
+                  <Text style={styles.statValue}>{places}</Text>
+                </View>
+              </View>
+
+              <Text style={styles.ratioLabel}>Ratio maximum</Text>
+              <View style={styles.ratioGrid}>
+                {RATIO_OPTIONS.map((option) => {
+                  const isActive = option === plafond;
+                  return (
+                    <TouchableOpacity
+                      key={option}
+                      style={[
+                        styles.ratioButton,
+                        isActive && styles.ratioButtonActive,
+                      ]}
+                      activeOpacity={0.8}
+                      onPress={() =>
+                        setPlafonds((prev) => ({
+                          ...prev,
+                          [cohorte.id]: option,
+                        }))
+                      }
+                    >
+                      <Text
+                        style={[
+                          styles.ratioButtonText,
+                          isActive && styles.ratioButtonTextActive,
+                        ]}
+                      >
+                        {option}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {exces > 0 && (
+                <View style={styles.warningBanner}>
+                  <Text style={styles.warningText}>
+                    {exces}{" "}
+                    {exces === 1 ? "parent inscrit" : "parents inscrits"}{" "}
+                    au-delà du plafond. Aucun n&apos;a été retiré.
+                  </Text>
+                </View>
+              )}
+            </View>
+          );
+        })}
+
+        <Text style={styles.footerNote}>
+          Le plafond est une donnée de la cohorte, jamais une constante du code
+          : c&apos;est ce qui permet à une délégation d&apos;adapter la taille
+          de ses groupes sans attendre une nouvelle version de
+          l&apos;application.
+        </Text>
+
+        {/* Footer */}
+        <Text style={styles.footer}>
+          © 2026 Mvoé — Programme national de parentalité positive, MINPROFF.
+        </Text>
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#F3F4F6" },
+  root: {
+    flex: 1,
+    backgroundColor: "#F3F4F6",
+  },
   header: {
     backgroundColor: Colors.primary,
     flexDirection: "row",
@@ -43,7 +215,153 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  headerTitle: { color: Colors.white, fontSize: 18, fontWeight: "700" },
-  center: { flex: 1, justifyContent: "center", alignItems: "center" },
-  placeholder: { fontSize: 16, color: Colors.textSecondary },
+  headerTitle: {
+    flex: 1,
+    color: Colors.white,
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  headerRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  iconBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.15)",
+  },
+  avatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#6366F1",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  avatarText: {
+    color: Colors.white,
+    fontWeight: "700",
+    fontSize: 16,
+  },
+  scroll: {
+    flex: 1,
+  },
+  content: {
+    padding: 16,
+    paddingBottom: 32,
+  },
+  pageTitle: {
+    fontSize: 30,
+    fontWeight: "800",
+    color: Colors.text,
+    lineHeight: 36,
+    marginBottom: 8,
+  },
+  pageSubtitle: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    lineHeight: 21,
+    marginBottom: 20,
+  },
+  card: {
+    backgroundColor: Colors.white,
+    borderRadius: 12,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    marginBottom: 16,
+  },
+  cohorteTitle: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: Colors.text,
+    lineHeight: 26,
+    marginBottom: 4,
+  },
+  cohorteSubtitle: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    marginBottom: 18,
+  },
+  statsRow: {
+    flexDirection: "row",
+    gap: 28,
+    marginBottom: 20,
+  },
+  statItem: {},
+  statLabel: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    marginBottom: 4,
+  },
+  statValue: {
+    fontSize: 24,
+    fontWeight: "800",
+    color: Colors.text,
+  },
+  ratioLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: Colors.text,
+    marginBottom: 10,
+  },
+  ratioGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  ratioButton: {
+    width: "30%",
+    height: 64,
+    borderRadius: 12,
+    backgroundColor: Colors.white,
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  ratioButtonActive: {
+    backgroundColor: Colors.primary,
+    shadowOpacity: 0.2,
+  },
+  ratioButtonText: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: Colors.text,
+  },
+  ratioButtonTextActive: {
+    color: Colors.white,
+  },
+  warningBanner: {
+    backgroundColor: "#FEF3C7",
+    borderRadius: 10,
+    padding: 14,
+    marginTop: 18,
+  },
+  warningText: {
+    fontSize: 14,
+    color: "#92400E",
+    lineHeight: 20,
+  },
+  footerNote: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    lineHeight: 21,
+    marginTop: 4,
+    marginBottom: 20,
+  },
+  footer: {
+    textAlign: "center",
+    fontSize: 12,
+    color: Colors.textMuted,
+    lineHeight: 18,
+    marginTop: 8,
+  },
 });
