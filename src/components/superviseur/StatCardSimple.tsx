@@ -1,0 +1,64 @@
+import { Colors } from "@/constants/colors";
+import { Ionicons } from "@expo/vector-icons";
+import { StyleSheet, Text, View } from "react-native";
+
+interface Props {
+  iconName: keyof typeof Ionicons.glyphMap;
+  iconBg: string;
+  iconColor: string;
+  value: number;
+  label: string;
+}
+
+export default function StatCardSimple({
+  iconName,
+  iconBg,
+  iconColor,
+  value,
+  label,
+}: Props) {
+  return (
+    <View style={styles.card}>
+      <View style={styles.row}>
+        <View style={[styles.iconBox, { backgroundColor: iconBg }]}>
+          <Ionicons name={iconName} size={24} color={iconColor} />
+        </View>
+        <Text style={styles.value}>{value}</Text>
+      </View>
+      <Text style={styles.label}>{label}</Text>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  card: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  row: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 8,
+  },
+  iconBox: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  value: {
+    fontSize: 32,
+    fontWeight: "800",
+    color: Colors.text,
+  },
+  label: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: Colors.text,
+  },
+});

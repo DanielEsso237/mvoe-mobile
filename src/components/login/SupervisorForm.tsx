@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
-import { View, StyleSheet } from 'react-native';
-import InputField from '@/components/common/InputField';
-import PrimaryButton from '@/components/common/PrimaryButton';
+import InputField from "@/components/common/InputField";
+import PrimaryButton from "@/components/common/PrimaryButton";
+import { useRouter } from "expo-router";
+import { useState } from "react";
+import { StyleSheet, View } from "react-native";
 
 export default function SupervisorForm() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
 
   return (
     <View style={styles.container}>
@@ -26,7 +28,10 @@ export default function SupervisorForm() {
         onChangeText={setPassword}
       />
       <View style={styles.spacer} />
-      <PrimaryButton title="OUVRIR LA SESSION" onPress={() => {}} />
+      <PrimaryButton
+        title="OUVRIR LA SESSION"
+        onPress={() => router.push("/superviseur/dashboard")}
+      />
     </View>
   );
 }
