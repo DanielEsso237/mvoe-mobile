@@ -1,6 +1,6 @@
+import { Colors } from "@/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { StyleSheet, Text, View } from "react-native";
-import { Colors } from "@/constants/colors";
 
 interface Props {
   iconName: keyof typeof Ionicons.glyphMap;
@@ -29,9 +29,7 @@ export default function StatCard({
         <View style={[styles.iconBox, { backgroundColor: iconBg }]}>
           <Ionicons name={iconName} size={24} color={iconColor} />
         </View>
-        {value !== null && (
-          <Text style={styles.value}>{value}</Text>
-        )}
+        {value !== null && <Text style={styles.value}>{value}</Text>}
       </View>
       <Text style={styles.label}>{label}</Text>
       {sublabel && <Text style={styles.sublabel}>{sublabel}</Text>}
@@ -40,7 +38,10 @@ export default function StatCard({
           <View
             style={[
               styles.progressFill,
-              { width: `${Math.min(progress * 100, 100)}%`, backgroundColor: progressColor },
+              {
+                width: `${Math.min(progress * 100, 100)}%`,
+                backgroundColor: progressColor,
+              },
             ]}
           />
         </View>
