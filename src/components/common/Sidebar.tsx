@@ -131,6 +131,10 @@ export default function Sidebar({
               <Text style={styles.regionLabel}>{regionName}</Text>
             </View>
 
+            <Text style={{ color: "red", fontWeight: "bold", marginBottom: 8 }}>
+              DEBUG: {SUPERVISEUR_MENU.length} items
+            </Text>
+
             <View style={styles.menuList}>
               {SUPERVISEUR_MENU.map((item) => {
                 const isActive = item.key === activeKey;
