@@ -1,14 +1,15 @@
+import AccountMenu from "@/components/common/AccountMenu";
 import { Colors } from "@/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
 import { useNavigation } from "expo-router";
 import { useState } from "react";
 import {
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 interface Cohorte {
@@ -20,6 +21,7 @@ interface Cohorte {
   plafond: number;
 }
 
+const DELEGATION = "Ebolowa II";
 const RATIO_OPTIONS = [10, 15, 20, 25];
 
 // TODO: brancher sur le serveur — données de démonstration en attendant.
@@ -87,9 +89,7 @@ export default function ParametresScreen() {
               color="rgba(255,255,255,0.8)"
             />
           </TouchableOpacity>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>D</Text>
-          </View>
+          <AccountMenu delegationLabel={DELEGATION} />
         </View>
       </View>
 

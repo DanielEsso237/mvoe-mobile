@@ -1,3 +1,4 @@
+import AccountMenu from "@/components/common/AccountMenu";
 import { Colors } from "@/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
@@ -5,11 +6,11 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useNavigation, useRouter } from "expo-router";
 import { useState } from "react";
 import {
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 type Statut = "declenchee" | "programmee" | "terminee";
@@ -38,6 +39,8 @@ interface Campagne {
   echelonsOuverts: number;
   echelonsTotal: number;
 }
+
+const DELEGATION = "Ebolowa II";
 
 // TODO: brancher sur le serveur — données de démonstration en attendant.
 const MOCK_CAMPAGNES: Campagne[] = [
@@ -153,9 +156,7 @@ export default function CampagnesScreen() {
               color="rgba(255,255,255,0.8)"
             />
           </TouchableOpacity>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>D</Text>
-          </View>
+          <AccountMenu delegationLabel={DELEGATION} />
         </View>
       </View>
 
