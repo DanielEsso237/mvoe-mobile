@@ -1,15 +1,16 @@
+import AccountMenu from "@/components/common/AccountMenu";
 import { Colors } from "@/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
 import { useNavigation, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import {
-    Alert,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 type Gravite = "faible" | "moyenne" | "elevee";
@@ -21,6 +22,8 @@ interface Signalement {
   gravite: Gravite;
   traite: boolean;
 }
+
+const DELEGATION = "Ebolowa II";
 
 // TODO: brancher sur le serveur — données de démonstration en attendant.
 const MOCK_DATA: {
@@ -133,9 +136,7 @@ export default function SignalementsScreen() {
               color="rgba(255,255,255,0.8)"
             />
           </TouchableOpacity>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>D</Text>
-          </View>
+          <AccountMenu delegationLabel={DELEGATION} />
         </View>
       </View>
 

@@ -1,3 +1,4 @@
+import AccountMenu from "@/components/common/AccountMenu";
 import AlertCard from "@/components/superviseur/AlertCard";
 import FacilitateursTable from "@/components/superviseur/FacilitateursTable";
 import StatCard from "@/components/superviseur/StatCard";
@@ -57,9 +58,7 @@ export default function DashboardScreen() {
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Mvoé</Text>
         <View style={styles.headerRight}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>D</Text>
-          </View>
+          <AccountMenu />
         </View>
       </View>
 

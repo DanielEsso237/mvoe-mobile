@@ -1,16 +1,17 @@
+import AccountMenu from "@/components/common/AccountMenu";
 import { Colors } from "@/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
 import { useNavigation, useRouter } from "expo-router";
 import { useState } from "react";
 import {
-    Alert,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 const REGION_NAME = "Ebolowa II";
@@ -83,9 +84,7 @@ export default function EnregistrerScreen() {
               color="rgba(255,255,255,0.8)"
             />
           </TouchableOpacity>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>D</Text>
-          </View>
+          <AccountMenu delegationLabel={REGION_NAME} />
         </View>
       </View>
 

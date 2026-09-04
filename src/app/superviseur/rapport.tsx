@@ -1,14 +1,15 @@
+import AccountMenu from "@/components/common/AccountMenu";
 import { Colors } from "@/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
 import { useNavigation, useRouter } from "expo-router";
 import { useState } from "react";
 import {
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 // TODO: remplacer par un appel API — pour l'instant un seul jeu de données
@@ -103,9 +104,7 @@ export default function RapportScreen() {
               color="rgba(255,255,255,0.8)"
             />
           </TouchableOpacity>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>D</Text>
-          </View>
+          <AccountMenu delegationLabel={REPORT.delegation} />
         </View>
       </View>
 

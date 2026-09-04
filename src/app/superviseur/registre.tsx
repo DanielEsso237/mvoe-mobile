@@ -1,3 +1,4 @@
+import AccountMenu from "@/components/common/AccountMenu";
 import { Colors } from "@/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
@@ -83,9 +84,7 @@ export default function RegistreScreen() {
               color="rgba(255,255,255,0.8)"
             />
           </TouchableOpacity>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>D</Text>
-          </View>
+          <AccountMenu delegationLabel={MOCK_DATA.delegation} />
         </View>
       </View>
 
