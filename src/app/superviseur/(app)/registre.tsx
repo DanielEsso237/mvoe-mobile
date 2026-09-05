@@ -1,10 +1,15 @@
 import AccountMenu from "@/components/common/AccountMenu";
 import { Colors } from "@/constants/colors";
+import { MOCK_ARRONDISSEMENTS } from "@/mocks/common";
+import { getRegistre } from "@/services/superviseur";
+import type { Facilitateur } from "@/types";
+import { TYPES_JURIDIQUES } from "@/types";
 import { Ionicons } from "@expo/vector-icons";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
 import { useNavigation, useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,57 +17,51 @@ import {
   View,
 } from "react-native";
 
-const MOCK_DATA = {
-  delegation: "Ebolowa II",
-  arrondissements: 1,
-  formes: 3,
-  actifs: 3,
-  inactifs: 0,
-  jamaisActifs: 0,
-  facilitateurs: [
-    {
-      nom: "Ateba Marie-Claire",
-      telephone: "677 01 04 72",
-      profession: "Enseignant",
-      arrondissement: "Ebolowa II",
-      commune: "Mvila",
-      statut: "actif",
-    },
-    {
-      nom: "Ndzana Léonie",
-      telephone: "676 31 41 87",
-      profession: "ONG",
-      arrondissement: "Ebolowa II",
-      commune: "Mvila",
-      statut: "actif",
-    },
-    {
-      nom: "Ndzana Étienne",
-      telephone: "699 41 27 08",
-      profession: "Agent public",
-      arrondissement: "Ebolowa II",
-      commune: "Mvila",
-      statut: "actif",
-    },
-  ],
-};
+const TOUS = "Tous ceux de ma portée";
 
-const ARRONDISSEMENT_OPTIONS = ["Tous ceux de ma portée", "Ebolowa II"];
+function typeJuridiqueLabel(value: Facilitateur["typeJuridique"]) {
+  return TYPES_JURIDIQUES.find((t) => t.value === value)?.label ?? value;
+}
 
 export default function RegistreScreen() {
   const navigation = useNavigation<DrawerNavigationProp<any>>();
   const router = useRouter();
-  const [selectedArrondissement, setSelectedArrondissement] = useState(
-    ARRONDISSEMENT_OPTIONS[0],
-  );
+  const [facilitateurs, setFacilitateurs] = useState<Facilitateur[] | null>(null);
+  const [selectedArrondissement, setSelectedArrondissement] = useState(TOUS);
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
-  const filteredFacilitateurs =
-    selectedArrondissement === "Tous ceux de ma portée"
-      ? MOCK_DATA.facilitateurs
-      : MOCK_DATA.facilitateurs.filter(
-          (f) => f.arrondissement === selectedArrondissement,
-        );
+  useEffect(() => {
+    getRegistre().then(setFacilitateurs);
+  }, []);
+
+  const arrondissementOptions = useMemo(
+    () => [TOUS, ...MOCK_ARRONDISSEMENTS.map((a) => a.nom)],
+    []
+  );
+
+  const filteredFacilitateurs = useMemo(() => {
+    if (!facilitateurs) return [];
+    if (selectedArrondissement === TOUS) return facilitateurs;
+    return facilitateurs.filter(
+      (f) => f.arrondissementNom === selectedArrondissement
+    );
+  }, [facilitateurs, selectedArrondissement]);
+
+  const stats = useMemo(() => {
+    const list = facilitateurs ?? [];
+    const actifs = list.filter((f) => f.statut === "actif").length;
+    const jamaisActifs = list.filter((f) => f.statut === "jamais_actif").length;
+    const inactifs = list.filter((f) => f.statut !== "actif").length;
+    return { formes: list.length, actifs, inactifs, jamaisActifs };
+  }, [facilitateurs]);
+
+  if (!facilitateurs) {
+    return (
+      <View style={styles.loadingRoot}>
+        <ActivityIndicator color={Colors.primary} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.root}>
@@ -84,7 +83,7 @@ export default function RegistreScreen() {
               color="rgba(255,255,255,0.8)"
             />
           </TouchableOpacity>
-          <AccountMenu delegationLabel={MOCK_DATA.delegation} />
+          <AccountMenu />
         </View>
       </View>
 
@@ -107,9 +106,6 @@ export default function RegistreScreen() {
 
         {/* Title */}
         <Text style={styles.pageTitle}>Registre des facilitateurs</Text>
-        <Text style={styles.pageSubtitle}>
-          {MOCK_DATA.delegation} · {MOCK_DATA.arrondissements} arrondissement
-        </Text>
 
         {/* CTA Button */}
         <TouchableOpacity
@@ -123,27 +119,25 @@ export default function RegistreScreen() {
 
         {/* Stats Grid */}
         <View style={styles.statsGrid}>
-          {/* Formés */}
           <View style={styles.statCard}>
             <View style={styles.statTopRow}>
               <View style={[styles.statIcon, { backgroundColor: "#EEF2FF" }]}>
                 <Ionicons name="person-outline" size={22} color="#6366F1" />
               </View>
               <Text style={[styles.statValue, { color: Colors.text }]}>
-                {MOCK_DATA.formes}
+                {stats.formes}
               </Text>
             </View>
             <Text style={styles.statLabel}>Formés</Text>
           </View>
 
-          {/* Actifs */}
           <View style={styles.statCard}>
             <View style={styles.statTopRow}>
               <View style={[styles.statIcon, { backgroundColor: "#ECFDF5" }]}>
                 <Ionicons name="checkmark" size={22} color="#10B981" />
               </View>
               <Text style={[styles.statValue, { color: "#10B981" }]}>
-                {MOCK_DATA.actifs}
+                {stats.actifs}
               </Text>
             </View>
             <Text style={styles.statLabel}>Actifs</Text>
@@ -152,7 +146,9 @@ export default function RegistreScreen() {
                 style={[
                   styles.progressFill,
                   {
-                    width: `${(MOCK_DATA.actifs / MOCK_DATA.formes) * 100}%`,
+                    width: `${
+                      stats.formes > 0 ? (stats.actifs / stats.formes) * 100 : 0
+                    }%`,
                     backgroundColor: "#10B981",
                   },
                 ]}
@@ -160,27 +156,25 @@ export default function RegistreScreen() {
             </View>
           </View>
 
-          {/* Inactifs */}
           <View style={styles.statCard}>
             <View style={styles.statTopRow}>
               <View style={[styles.statIcon, { backgroundColor: "#FFFBEB" }]}>
                 <Ionicons name="time-outline" size={22} color="#F59E0B" />
               </View>
               <Text style={[styles.statValue, { color: "#F59E0B" }]}>
-                {MOCK_DATA.inactifs}
+                {stats.inactifs}
               </Text>
             </View>
             <Text style={styles.statLabel}>Inactifs</Text>
           </View>
 
-          {/* Jamais actifs */}
           <View style={styles.statCard}>
             <View style={styles.statTopRow}>
               <View style={[styles.statIcon, { backgroundColor: "#FEF2F2" }]}>
                 <Ionicons name="close" size={22} color="#EF4444" />
               </View>
               <Text style={[styles.statValue, { color: "#EF4444" }]}>
-                {MOCK_DATA.jamaisActifs}
+                {stats.jamaisActifs}
               </Text>
             </View>
             <Text style={styles.statLabel}>Jamais actifs</Text>
@@ -214,7 +208,7 @@ export default function RegistreScreen() {
           </TouchableOpacity>
           {dropdownOpen && (
             <View style={styles.dropdownMenu}>
-              {ARRONDISSEMENT_OPTIONS.map((option) => (
+              {arrondissementOptions.map((option) => (
                 <TouchableOpacity
                   key={option}
                   style={[
@@ -266,31 +260,40 @@ export default function RegistreScreen() {
             </Text>
           </View>
 
-          {/* Table rows */}
-          {filteredFacilitateurs.map((f, index) => (
-            <View
-              key={index}
-              style={[
-                styles.tableRow,
-                index < filteredFacilitateurs.length - 1 &&
-                  styles.tableRowBorder,
-              ]}
-            >
-              <View style={{ flex: 1 }}>
-                <Text style={styles.facilitateurName}>{f.nom}</Text>
-                <Text style={styles.facilitateurPhone}>{f.telephone}</Text>
-                <Text style={styles.facilitateurProfession}>
-                  {f.profession}
-                </Text>
-              </View>
-              <View style={{ width: 110, alignItems: "flex-end" }}>
-                <Text style={styles.facilitateurArrondissement}>
-                  {f.arrondissement}
-                </Text>
-                <Text style={styles.facilitateurCommune}>{f.commune}</Text>
-              </View>
+          {filteredFacilitateurs.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyStateText}>
+                Aucun facilitateur dans cet arrondissement.
+              </Text>
             </View>
-          ))}
+          ) : (
+            filteredFacilitateurs.map((f, index) => (
+              <View
+                key={f.id}
+                style={[
+                  styles.tableRow,
+                  index < filteredFacilitateurs.length - 1 &&
+                    styles.tableRowBorder,
+                ]}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.facilitateurName}>{f.nom}</Text>
+                  <Text style={styles.facilitateurPhone}>{f.telephone}</Text>
+                  <Text style={styles.facilitateurProfession}>
+                    {typeJuridiqueLabel(f.typeJuridique)}
+                  </Text>
+                </View>
+                <View style={{ width: 110, alignItems: "flex-end" }}>
+                  <Text style={styles.facilitateurArrondissement}>
+                    {f.arrondissementNom}
+                  </Text>
+                  <Text style={styles.facilitateurCommune}>
+                    {f.departementNom}
+                  </Text>
+                </View>
+              </View>
+            ))
+          )}
         </View>
 
         {/* Footer */}
@@ -305,6 +308,12 @@ export default function RegistreScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
+    backgroundColor: "#F3F4F6",
+  },
+  loadingRoot: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
     backgroundColor: "#F3F4F6",
   },
   header: {
@@ -343,19 +352,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "rgba(255,255,255,0.15)",
   },
-  avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#6366F1",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  avatarText: {
-    color: Colors.white,
-    fontWeight: "700",
-    fontSize: 16,
-  },
   scroll: {
     flex: 1,
   },
@@ -385,11 +381,6 @@ const styles = StyleSheet.create({
     fontSize: 26,
     fontWeight: "800",
     color: Colors.text,
-    marginBottom: 4,
-  },
-  pageSubtitle: {
-    fontSize: 14,
-    color: Colors.textSecondary,
     marginBottom: 20,
   },
   ctaButton: {
@@ -565,6 +556,15 @@ const styles = StyleSheet.create({
   tableRowBorder: {
     borderBottomWidth: 1,
     borderBottomColor: "#F3F4F6",
+  },
+  emptyState: {
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+  },
+  emptyStateText: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    textAlign: "center",
   },
   facilitateurName: {
     fontSize: 15,

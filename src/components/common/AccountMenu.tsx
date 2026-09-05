@@ -1,4 +1,5 @@
 import { Colors } from "@/constants/colors";
+import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
@@ -18,13 +19,17 @@ interface Props {
 }
 
 export default function AccountMenu({
-  avatarLetter = "D",
-  delegationLabel = "Ebolowa II",
+  avatarLetter,
+  delegationLabel,
   parametresRoute = "/superviseur/parametres",
   loginRoute = "/superviseur",
 }: Props) {
   const router = useRouter();
+  const { superviseur, logoutSuperviseur } = useAuth();
   const [open, setOpen] = useState(false);
+
+  const resolvedLabel = delegationLabel ?? superviseur?.compte.portee.libelle ?? "";
+  const resolvedLetter = avatarLetter ?? (superviseur?.compte.nom.charAt(0) || "?");
 
   const close = () => setOpen(false);
 
@@ -35,10 +40,7 @@ export default function AccountMenu({
 
   const logout = () => {
     close();
-    // TODO: effacer le token / la session stockée ici quand l'authentification
-    // réelle sera branchée. Pour l'instant on redirige simplement vers le
-    // login superviseur.
-    router.replace(loginRoute as any);
+    logoutSuperviseur().then(() => router.replace(loginRoute as any));
   };
 
   return (
@@ -49,7 +51,7 @@ export default function AccountMenu({
         style={styles.avatar}
         activeOpacity={0.8}
       >
-        <Text style={styles.avatarText}>{avatarLetter}</Text>
+        <Text style={styles.avatarText}>{resolvedLetter}</Text>
       </TouchableOpacity>
 
       <Modal
@@ -62,9 +64,9 @@ export default function AccountMenu({
           <View style={styles.menu}>
             <View style={styles.menuHeader}>
               <Text style={styles.menuHeaderTitle} numberOfLines={1}>
-                Délégation d&apos;arrondissem...
+                {superviseur?.compte.nom ?? "Compte"}
               </Text>
-              <Text style={styles.menuHeaderSubtitle}>{delegationLabel}</Text>
+              <Text style={styles.menuHeaderSubtitle}>{resolvedLabel}</Text>
             </View>
 
             <TouchableOpacity

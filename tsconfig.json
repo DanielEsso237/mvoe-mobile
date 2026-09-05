@@ -2,6 +2,7 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
+    "ignoreDeprecations": "6.0",
     "baseUrl": ".",
     "paths": {
       "@/*": [
@@ -14,5 +15,19 @@
     "src/**/*",
     ".expo/types/**/*.ts",
     "expo-env.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "src/components/animated-icon.tsx",
+    "src/components/animated-icon.web.tsx",
+    "src/components/app-tabs.tsx",
+    "src/components/app-tabs.web.tsx",
+    "src/components/external-link.tsx",
+    "src/components/hint-row.tsx",
+    "src/components/themed-text.tsx",
+    "src/components/themed-view.tsx",
+    "src/components/ui/collapsible.tsx",
+    "src/components/web-badge.tsx",
+    "src/hooks/use-theme.ts"
   ]
 }

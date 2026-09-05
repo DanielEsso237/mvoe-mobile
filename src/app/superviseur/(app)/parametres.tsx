@@ -1,10 +1,13 @@
 import AccountMenu from "@/components/common/AccountMenu";
 import { Colors } from "@/constants/colors";
+import { getCohortes, updateParametreCohorte } from "@/services/superviseur";
+import type { Cohorte } from "@/types";
 import { Ionicons } from "@expo/vector-icons";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
 import { useNavigation } from "expo-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,62 +15,58 @@ import {
   View,
 } from "react-native";
 
-interface Cohorte {
-  id: string;
-  nom: string;
-  delegation: string;
-  facilitateur: string;
-  inscrits: number;
-  plafond: number;
-}
-
-const DELEGATION = "Ebolowa II";
 const RATIO_OPTIONS = [10, 15, 20, 25];
-
-// TODO: brancher sur le serveur — données de démonstration en attendant.
-const MOCK_COHORTES: Cohorte[] = [
-  {
-    id: "mardi",
-    nom: "Ebolowa II — groupe du mardi",
-    delegation: "Ebolowa II",
-    facilitateur: "Ndzana Étienne",
-    inscrits: 20,
-    plafond: 20,
-  },
-  {
-    id: "vendredi",
-    nom: "Ebolowa II — groupe du vendredi",
-    delegation: "Ebolowa II",
-    facilitateur: "Ateba Marie-Claire",
-    inscrits: 23,
-    plafond: 20,
-  },
-  {
-    id: "samedi",
-    nom: "Ebolowa II — groupe du samedi",
-    delegation: "Ebolowa II",
-    facilitateur: "Ndzana Léonie",
-    inscrits: 15,
-    plafond: 20,
-  },
-  {
-    id: "lundi",
-    nom: "Ebolowa II — groupe du lundi",
-    delegation: "Ebolowa II",
-    facilitateur: "Ndzana Étienne",
-    inscrits: 20,
-    plafond: 20,
-  },
-];
 
 export default function ParametresScreen() {
   const navigation = useNavigation<DrawerNavigationProp<any>>();
-  const [plafonds, setPlafonds] = useState<Record<string, number>>(() =>
-    MOCK_COHORTES.reduce<Record<string, number>>((acc, c) => {
-      acc[c.id] = c.plafond;
-      return acc;
-    }, {}),
-  );
+  const [cohortes, setCohortes] = useState<Cohorte[] | null>(null);
+  const [confirmations, setConfirmations] = useState<
+    Record<string, { avant: number; apres: number }>
+  >({});
+  const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  useEffect(() => {
+    getCohortes().then(setCohortes);
+    return () => {
+      Object.values(timers.current).forEach(clearTimeout);
+    };
+  }, []);
+
+  const handleChangeRatio = async (cohorte: Cohorte, nouveauRatio: number) => {
+    const avant = cohorte.ratioMax;
+    if (avant === nouveauRatio) return;
+
+    setCohortes((prev) =>
+      prev
+        ? prev.map((c) =>
+            c.id === cohorte.id ? { ...c, ratioMax: nouveauRatio } : c
+          )
+        : prev
+    );
+
+    await updateParametreCohorte(cohorte.id, nouveauRatio);
+
+    setConfirmations((prev) => ({
+      ...prev,
+      [cohorte.id]: { avant, apres: nouveauRatio },
+    }));
+    if (timers.current[cohorte.id]) clearTimeout(timers.current[cohorte.id]);
+    timers.current[cohorte.id] = setTimeout(() => {
+      setConfirmations((prev) => {
+        const next = { ...prev };
+        delete next[cohorte.id];
+        return next;
+      });
+    }, 5000);
+  };
+
+  if (!cohortes) {
+    return (
+      <View style={styles.loadingRoot}>
+        <ActivityIndicator color={Colors.primary} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.root}>
@@ -89,7 +88,7 @@ export default function ParametresScreen() {
               color="rgba(255,255,255,0.8)"
             />
           </TouchableOpacity>
-          <AccountMenu delegationLabel={DELEGATION} />
+          <AccountMenu />
         </View>
       </View>
 
@@ -105,26 +104,39 @@ export default function ParametresScreen() {
           immédiatement.
         </Text>
 
-        {MOCK_COHORTES.map((cohorte) => {
-          const plafond = plafonds[cohorte.id] ?? cohorte.plafond;
-          const places = Math.max(plafond - cohorte.inscrits, 0);
-          const exces = cohorte.inscrits - plafond;
+        {cohortes.map((cohorte) => {
+          const places = Math.max(cohorte.ratioMax - cohorte.effectif, 0);
+          const exces = cohorte.effectif - cohorte.ratioMax;
+          const confirmation = confirmations[cohorte.id];
 
           return (
             <View key={cohorte.id} style={styles.card}>
-              <Text style={styles.cohorteTitle}>{cohorte.nom}</Text>
+              <Text style={styles.cohorteTitle}>{cohorte.libelle}</Text>
               <Text style={styles.cohorteSubtitle}>
-                {cohorte.delegation} · {cohorte.facilitateur}
+                {cohorte.arrondissementNom}
               </Text>
+
+              {confirmation && (
+                <View style={styles.confirmBanner}>
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={20}
+                    color="#047857"
+                  />
+                  <Text style={styles.confirmText}>
+                    Plafond modifié : {confirmation.avant} → {confirmation.apres}
+                  </Text>
+                </View>
+              )}
 
               <View style={styles.statsRow}>
                 <View style={styles.statItem}>
                   <Text style={styles.statLabel}>Inscrits</Text>
-                  <Text style={styles.statValue}>{cohorte.inscrits}</Text>
+                  <Text style={styles.statValue}>{cohorte.effectif}</Text>
                 </View>
                 <View style={styles.statItem}>
                   <Text style={styles.statLabel}>Plafond</Text>
-                  <Text style={styles.statValue}>{plafond}</Text>
+                  <Text style={styles.statValue}>{cohorte.ratioMax}</Text>
                 </View>
                 <View style={styles.statItem}>
                   <Text style={styles.statLabel}>Places</Text>
@@ -135,7 +147,7 @@ export default function ParametresScreen() {
               <Text style={styles.ratioLabel}>Ratio maximum</Text>
               <View style={styles.ratioGrid}>
                 {RATIO_OPTIONS.map((option) => {
-                  const isActive = option === plafond;
+                  const isActive = option === cohorte.ratioMax;
                   return (
                     <TouchableOpacity
                       key={option}
@@ -144,12 +156,7 @@ export default function ParametresScreen() {
                         isActive && styles.ratioButtonActive,
                       ]}
                       activeOpacity={0.8}
-                      onPress={() =>
-                        setPlafonds((prev) => ({
-                          ...prev,
-                          [cohorte.id]: option,
-                        }))
-                      }
+                      onPress={() => handleChangeRatio(cohorte, option)}
                     >
                       <Text
                         style={[
@@ -198,6 +205,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#F3F4F6",
   },
+  loadingRoot: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#F3F4F6",
+  },
   header: {
     backgroundColor: Colors.primary,
     flexDirection: "row",
@@ -233,19 +246,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: "rgba(255,255,255,0.15)",
-  },
-  avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#6366F1",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  avatarText: {
-    color: Colors.white,
-    fontWeight: "700",
-    fontSize: 16,
   },
   scroll: {
     flex: 1,
@@ -286,6 +286,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.textSecondary,
     marginBottom: 18,
+  },
+  confirmBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: "#D1FAE5",
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 18,
+  },
+  confirmText: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#047857",
   },
   statsRow: {
     flexDirection: "row",
@@ -361,7 +375,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontSize: 12,
     color: Colors.textMuted,
-    lineHeight: 18,
     marginTop: 8,
+    lineHeight: 18,
   },
 });

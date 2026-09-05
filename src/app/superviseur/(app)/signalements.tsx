@@ -1,120 +1,119 @@
 import AccountMenu from "@/components/common/AccountMenu";
 import { Colors } from "@/constants/colors";
+import { getSignalements, updateSignalement } from "@/services/superviseur";
+import type { Signalement, SignalementGravite, SignalementStatut } from "@/types";
 import { Ionicons } from "@expo/vector-icons";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
 import { useNavigation, useRouter } from "expo-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  Alert,
+  ActivityIndicator,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
 
-type Gravite = "faible" | "moyenne" | "elevee";
-
-interface Signalement {
-  id: string;
-  situation: string;
-  date: string;
-  gravite: Gravite;
-  traite: boolean;
-}
-
-const DELEGATION = "Ebolowa II";
-
-// TODO: brancher sur le serveur — données de démonstration en attendant.
-const MOCK_DATA: {
-  aTraiter: number;
-  dontGraves: number;
-  recusEnTout: number;
-  delaiMoyenJours: number;
-  signalements: Signalement[];
-} = {
-  aTraiter: 3,
-  dontGraves: 1,
-  recusEnTout: 7,
-  delaiMoyenJours: 8,
-  signalements: [
-    {
-      id: "1",
-      situation: "Violence basée sur le genre",
-      date: "28/08/2026",
-      gravite: "moyenne",
-      traite: false,
-    },
-    {
-      id: "2",
-      situation: "Maltraitance",
-      date: "22/08/2026",
-      gravite: "elevee",
-      traite: false,
-    },
-    {
-      id: "3",
-      situation: "Violence basée sur le genre",
-      date: "15/07/2026",
-      gravite: "moyenne",
-      traite: false,
-    },
-    {
-      id: "4",
-      situation: "Négligence",
-      date: "02/07/2026",
-      gravite: "faible",
-      traite: true,
-    },
-    {
-      id: "5",
-      situation: "Maltraitance",
-      date: "18/06/2026",
-      gravite: "moyenne",
-      traite: true,
-    },
-    {
-      id: "6",
-      situation: "Violence basée sur le genre",
-      date: "04/06/2026",
-      gravite: "faible",
-      traite: true,
-    },
-    {
-      id: "7",
-      situation: "Négligence",
-      date: "22/05/2026",
-      gravite: "moyenne",
-      traite: true,
-    },
-  ],
-};
-
-function getGraviteStyle(gravite: Gravite) {
+function getGraviteStyle(gravite: SignalementGravite) {
   switch (gravite) {
-    case "elevee":
-      return { bg: "#EF4444", color: Colors.white, label: "Élevée" };
-    case "moyenne":
-      return { bg: "#6B7280", color: Colors.white, label: "Moyenne" };
+    case "grave":
+      return { bg: "#EF4444", color: Colors.white, label: "Grave" };
+    case "moderee":
+      return { bg: "#6B7280", color: Colors.white, label: "Modérée" };
     case "faible":
     default:
       return { bg: "#D1FAE5", color: "#047857", label: "Faible" };
   }
 }
 
+const STATUT_LABEL: Record<SignalementStatut, string> = {
+  soumis: "Soumis",
+  examine: "Examiné",
+  oriente: "Orienté",
+  clos: "Clos",
+};
+
 type TabKey = "attente" | "historique";
 
 export default function SignalementsScreen() {
   const navigation = useNavigation<DrawerNavigationProp<any>>();
   const router = useRouter();
+  const [signalements, setSignalements] = useState<Signalement[] | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>("attente");
+  const [selected, setSelected] = useState<Signalement | null>(null);
+  const [nouveauStatut, setNouveauStatut] = useState<SignalementStatut>("examine");
+  const [suiteDonnee, setSuiteDonnee] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
+
+  const load = () => getSignalements().then(setSignalements);
+
+  useEffect(() => {
+    load();
+  }, []);
 
   const filteredSignalements = useMemo(() => {
+    if (!signalements) return [];
     if (activeTab === "attente") {
-      return MOCK_DATA.signalements.filter((s) => !s.traite);
+      return signalements.filter((s) => s.statut !== "clos");
     }
-    return MOCK_DATA.signalements;
-  }, [activeTab]);
+    return signalements;
+  }, [signalements, activeTab]);
+
+  const stats = useMemo(() => {
+    const list = signalements ?? [];
+    const aTraiter = list.filter((s) => s.statut !== "clos").length;
+    const dontGraves = list.filter(
+      (s) => s.statut !== "clos" && s.gravite === "grave"
+    ).length;
+    const recusEnTout = list.length;
+    const delaiMoyenJours = list.length
+      ? Math.round(
+          list.reduce((sum, s) => sum + s.joursAttente, 0) / list.length
+        )
+      : 0;
+    return { aTraiter, dontGraves, recusEnTout, delaiMoyenJours };
+  }, [signalements]);
+
+  const openModal = (s: Signalement) => {
+    setSelected(s);
+    setNouveauStatut(s.statut === "soumis" ? "examine" : s.statut);
+    setSuiteDonnee(s.suiteDonnee ?? "");
+    setModalError(null);
+  };
+
+  const closeModal = () => setSelected(null);
+
+  const handleValider = async () => {
+    if (!selected) return;
+    setModalError(null);
+    setSaving(true);
+    try {
+      await updateSignalement(selected.id, {
+        statut: nouveauStatut,
+        suiteDonnee: suiteDonnee.trim() || undefined,
+      });
+      closeModal();
+      load();
+    } catch (error) {
+      setModalError(
+        error instanceof Error ? error.message : "La mise à jour a échoué."
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!signalements) {
+    return (
+      <View style={styles.loadingRoot}>
+        <ActivityIndicator color={Colors.primary} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.root}>
@@ -136,7 +135,7 @@ export default function SignalementsScreen() {
               color="rgba(255,255,255,0.8)"
             />
           </TouchableOpacity>
-          <AccountMenu delegationLabel={DELEGATION} />
+          <AccountMenu />
         </View>
       </View>
 
@@ -173,7 +172,7 @@ export default function SignalementsScreen() {
                 <Ionicons name="alert-circle" size={22} color="#EF4444" />
               </View>
               <Text style={[styles.statValue, { color: "#DC2626" }]}>
-                {MOCK_DATA.aTraiter}
+                {stats.aTraiter}
               </Text>
             </View>
             <Text style={styles.statLabel}>À traiter</Text>
@@ -185,7 +184,7 @@ export default function SignalementsScreen() {
                 <Ionicons name="warning" size={22} color="#F59E0B" />
               </View>
               <Text style={[styles.statValue, { color: "#DC2626" }]}>
-                {MOCK_DATA.dontGraves}
+                {stats.dontGraves}
               </Text>
             </View>
             <Text style={styles.statLabel}>Dont graves</Text>
@@ -197,7 +196,7 @@ export default function SignalementsScreen() {
                 <Ionicons name="reader-outline" size={22} color="#6366F1" />
               </View>
               <Text style={[styles.statValue, { color: Colors.text }]}>
-                {MOCK_DATA.recusEnTout}
+                {stats.recusEnTout}
               </Text>
             </View>
             <Text style={styles.statLabel}>Reçus en tout</Text>
@@ -209,7 +208,7 @@ export default function SignalementsScreen() {
                 <Ionicons name="time-outline" size={22} color="#10B981" />
               </View>
               <Text style={[styles.statValue, { color: Colors.text }]}>
-                {MOCK_DATA.delaiMoyenJours}
+                {stats.delaiMoyenJours}
               </Text>
             </View>
             <Text style={styles.statLabel}>Délai moyen</Text>
@@ -291,16 +290,14 @@ export default function SignalementsScreen() {
                         styles.tableRowBorder,
                     ]}
                     activeOpacity={0.7}
-                    onPress={() =>
-                      Alert.alert(
-                        s.situation,
-                        `Reçu le ${s.date}. Détail du signalement à venir.`,
-                      )
-                    }
+                    onPress={() => openModal(s)}
                   >
                     <View style={styles.situationColumn}>
                       <Text style={styles.situationText}>{s.situation}</Text>
-                      <Text style={styles.dateText}>{s.date}</Text>
+                      <Text style={styles.dateText}>
+                        {s.soumisLe} · {STATUT_LABEL[s.statut]}
+                        {s.statut !== "clos" ? ` · ${s.joursAttente} j` : ""}
+                      </Text>
                     </View>
                     <View
                       style={[
@@ -335,6 +332,104 @@ export default function SignalementsScreen() {
           © 2026 Mvoé — Programme national de parentalité positive, MINPROFF.
         </Text>
       </ScrollView>
+
+      {/* Modale de traitement */}
+      <Modal
+        visible={!!selected}
+        transparent
+        animationType="slide"
+        onRequestClose={closeModal}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={styles.modalTitle}>{selected?.situation}</Text>
+              <Text style={styles.modalMeta}>
+                Reçu le {selected?.soumisLe} · {selected?.arrondissementNom} ·
+                remonté par {selected?.facilitateurNom}
+              </Text>
+
+              <Text style={styles.modalSectionLabel}>NOUVEAU STATUT</Text>
+              <View style={styles.statutRow}>
+                {(["examine", "oriente", "clos"] as SignalementStatut[]).map(
+                  (statut) => (
+                    <TouchableOpacity
+                      key={statut}
+                      style={[
+                        styles.statutOption,
+                        nouveauStatut === statut && styles.statutOptionActive,
+                      ]}
+                      onPress={() => setNouveauStatut(statut)}
+                      activeOpacity={0.8}
+                    >
+                      <Text
+                        style={[
+                          styles.statutOptionText,
+                          nouveauStatut === statut &&
+                            styles.statutOptionTextActive,
+                        ]}
+                      >
+                        {STATUT_LABEL[statut]}
+                      </Text>
+                    </TouchableOpacity>
+                  )
+                )}
+              </View>
+
+              <Text style={styles.modalSectionLabel}>
+                SUITE DONNÉE{" "}
+                {(nouveauStatut === "oriente" || nouveauStatut === "clos") && (
+                  <Text style={styles.requiredTag}>— obligatoire</Text>
+                )}
+              </Text>
+              <TextInput
+                style={styles.suiteInput}
+                multiline
+                numberOfLines={4}
+                placeholder="Ce que vous avez fait de ce signalement…"
+                placeholderTextColor={Colors.placeholder}
+                value={suiteDonnee}
+                onChangeText={setSuiteDonnee}
+              />
+              <Text style={styles.modalHint}>
+                Le facilitateur qui a remonté ce signalement lira ce texte :
+                un signalement sans retour est un signalement qu&apos;il ne
+                refera pas.
+              </Text>
+
+              <View style={styles.noNotifBanner}>
+                <Ionicons name="information-circle-outline" size={16} color={Colors.textMuted} />
+                <Text style={styles.noNotifText}>
+                  Aucune autorité n&apos;est prévenue automatiquement par ce
+                  changement de statut.
+                </Text>
+              </View>
+
+              {modalError && <Text style={styles.errorText}>{modalError}</Text>}
+
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={styles.cancelButton}
+                  onPress={closeModal}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.cancelButtonText}>Annuler</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.validerButton, saving && styles.validerButtonDisabled]}
+                  onPress={handleValider}
+                  activeOpacity={0.85}
+                  disabled={saving}
+                >
+                  <Text style={styles.validerButtonText}>
+                    {saving ? "Enregistrement…" : "Valider"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -342,6 +437,12 @@ export default function SignalementsScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
+    backgroundColor: "#F3F4F6",
+  },
+  loadingRoot: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
     backgroundColor: "#F3F4F6",
   },
   header: {
@@ -379,19 +480,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: "rgba(255,255,255,0.15)",
-  },
-  avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#6366F1",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  avatarText: {
-    color: Colors.white,
-    fontWeight: "700",
-    fontSize: 16,
   },
   scroll: {
     flex: 1,
@@ -593,5 +681,135 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     lineHeight: 18,
     marginTop: 8,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(15,15,25,0.4)",
+    justifyContent: "flex-end",
+  },
+  modalCard: {
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    maxHeight: "85%",
+  },
+  modalTitle: {
+    fontSize: 19,
+    fontWeight: "800",
+    color: Colors.text,
+    marginBottom: 6,
+  },
+  modalMeta: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    lineHeight: 19,
+    marginBottom: 20,
+  },
+  modalSectionLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: Colors.textMuted,
+    letterSpacing: 0.8,
+    marginBottom: 10,
+  },
+  requiredTag: {
+    color: "#DC2626",
+  },
+  statutRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 20,
+  },
+  statutOption: {
+    flex: 1,
+    borderWidth: 1.5,
+    borderColor: "#E5E7EB",
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  statutOptionActive: {
+    borderColor: Colors.primary,
+    backgroundColor: "#EEF2FF",
+  },
+  statutOptionText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: Colors.textSecondary,
+  },
+  statutOptionTextActive: {
+    color: Colors.primary,
+  },
+  suiteInput: {
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: Colors.text,
+    textAlignVertical: "top",
+    minHeight: 90,
+    marginBottom: 8,
+  },
+  modalHint: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    lineHeight: 18,
+    marginBottom: 16,
+  },
+  noNotifBanner: {
+    flexDirection: "row",
+    gap: 8,
+    backgroundColor: "#F3F4F6",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 16,
+    alignItems: "flex-start",
+  },
+  noNotifText: {
+    flex: 1,
+    fontSize: 12,
+    color: Colors.textMuted,
+    lineHeight: 18,
+  },
+  errorText: {
+    color: "#DC2626",
+    fontSize: 13,
+    marginBottom: 12,
+  },
+  modalActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 8,
+  },
+  cancelButton: {
+    flex: 1,
+    borderWidth: 1.5,
+    borderColor: "#E5E7EB",
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  cancelButtonText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: Colors.textSecondary,
+  },
+  validerButton: {
+    flex: 1,
+    backgroundColor: Colors.primary,
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  validerButtonDisabled: {
+    backgroundColor: "#A5AEFC",
+  },
+  validerButtonText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: Colors.white,
   },
 });
