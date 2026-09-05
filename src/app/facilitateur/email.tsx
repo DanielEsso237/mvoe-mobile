@@ -2,11 +2,32 @@ import LogoHeader from "@/components/common/LogoHeader";
 import SpaceSelector from "@/components/common/SpaceSelector";
 import EmailPasswordForm from "@/components/login/EmailPasswordForm";
 import { Colors } from "@/constants/colors";
+import { useAuth } from "@/contexts/AuthContext";
+import { ApiError } from "@/services/client";
 import { useRouter } from "expo-router";
+import { useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 
 export default function FacilitateurEmailScreen() {
   const router = useRouter();
+  const { loginFacilitateur } = useAuth();
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const handleSubmit = async (email: string, motDePasse: string) => {
+    setErrorMessage(null);
+    setLoading(true);
+    try {
+      await loginFacilitateur({ email, motDePasse });
+      router.replace("/facilitateur/accueil");
+    } catch (error) {
+      setErrorMessage(
+        error instanceof ApiError ? error.message : "Impossible de se connecter."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <ScrollView
@@ -21,6 +42,9 @@ export default function FacilitateurEmailScreen() {
         </Text>
         <EmailPasswordForm
           onSwitchMode={() => router.back()}
+          onSubmit={handleSubmit}
+          loading={loading}
+          errorMessage={errorMessage}
           emailPlaceholder="prenom.nom@minproff.cm"
           buttonTitle="OUVRIR MON KIT"
         />

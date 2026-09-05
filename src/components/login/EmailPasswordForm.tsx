@@ -2,16 +2,22 @@ import InputField from "@/components/common/InputField";
 import PrimaryButton from "@/components/common/PrimaryButton";
 import SecondaryButton from "@/components/common/SecondaryButton";
 import { useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
 interface Props {
   onSwitchMode: () => void;
+  onSubmit: (email: string, motDePasse: string) => void;
+  loading?: boolean;
+  errorMessage?: string | null;
   emailPlaceholder?: string;
   buttonTitle?: string;
 }
 
 export default function EmailPasswordForm({
   onSwitchMode,
+  onSubmit,
+  loading = false,
+  errorMessage,
   emailPlaceholder = "prenom.nom@minproff.cm",
   buttonTitle = "OUVRIR MON KIT",
 }: Props) {
@@ -36,8 +42,13 @@ export default function EmailPasswordForm({
         value={password}
         onChangeText={setPassword}
       />
+      {errorMessage && <Text style={styles.error}>{errorMessage}</Text>}
       <View style={styles.spacer} />
-      <PrimaryButton title={buttonTitle} onPress={() => {}} />
+      <PrimaryButton
+        title={loading ? "CONNEXION…" : buttonTitle}
+        onPress={() => onSubmit(email, password)}
+        disabled={loading}
+      />
       <SecondaryButton
         title="Utiliser mon numéro et mon code d'appareil"
         onPress={onSwitchMode}
@@ -53,5 +64,11 @@ const styles = StyleSheet.create({
   },
   spacer: {
     height: 8,
+  },
+  error: {
+    color: "#DC2626",
+    fontSize: 13,
+    marginTop: -4,
+    marginBottom: 8,
   },
 });
