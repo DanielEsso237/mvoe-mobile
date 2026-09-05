@@ -2,11 +2,32 @@ import LogoHeader from "@/components/common/LogoHeader";
 import SpaceSelector from "@/components/common/SpaceSelector";
 import PhoneKitForm from "@/components/login/PhoneKitForm";
 import { Colors } from "@/constants/colors";
+import { useAuth } from "@/contexts/AuthContext";
+import { ApiError } from "@/services/client";
 import { useRouter } from "expo-router";
+import { useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 
 export default function FacilitateurKitScreen() {
   const router = useRouter();
+  const { loginFacilitateur } = useAuth();
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const handleSubmit = async (telephone: string, codeAppareil: string) => {
+    setErrorMessage(null);
+    setLoading(true);
+    try {
+      await loginFacilitateur({ telephone, codeAppareil });
+      router.replace("/facilitateur/accueil");
+    } catch (error) {
+      setErrorMessage(
+        error instanceof ApiError ? error.message : "Impossible de se connecter."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <ScrollView
@@ -19,7 +40,12 @@ export default function FacilitateurKitScreen() {
         <Text style={styles.subtitle}>
           Vos identifiants vous ont été remis par votre superviseur.
         </Text>
-        <PhoneKitForm onSwitchMode={() => router.push("/facilitateur/email")} />
+        <PhoneKitForm
+          onSwitchMode={() => router.push("/facilitateur/email")}
+          onSubmit={handleSubmit}
+          loading={loading}
+          errorMessage={errorMessage}
+        />
         <SpaceSelector currentSpace="facilitateur" />
       </View>
     </ScrollView>
