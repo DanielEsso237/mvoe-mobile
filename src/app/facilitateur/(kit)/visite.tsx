@@ -1,10 +1,12 @@
 import KitHeader from "@/components/facilitateur/KitHeader";
 import { Colors } from "@/constants/colors";
+import { useAuth } from "@/contexts/AuthContext";
 import { enregistrerVisite, getFoyers } from "@/services/facilitateur";
-import type { Foyer } from "@/types";
+import type { DifficulteFonctionnelle, Foyer } from "@/types";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
+import { useFocusEffect } from "expo-router/react-navigation";
 import { useNavigation, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   ScrollView,
   StyleSheet,
@@ -22,7 +24,13 @@ const OBSERVATIONS = [
   "Autre adulte présent",
 ];
 
-const DIFFICULTES = ["Voir", "Entendre", "Marcher", "Se souvenir", "Communiquer"];
+const DIFFICULTES: { value: DifficulteFonctionnelle; label: string }[] = [
+  { value: "vision", label: "Voir" },
+  { value: "audition", label: "Entendre" },
+  { value: "mobilite", label: "Se déplacer" },
+  { value: "comprehension", label: "Comprendre, se souvenir" },
+  { value: "communication", label: "Se faire comprendre" },
+];
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -31,27 +39,33 @@ function today() {
 export default function VisiteScreen() {
   const navigation = useNavigation<DrawerNavigationProp<any>>();
   const router = useRouter();
+  const { facilitateur } = useAuth();
+  const facilitateurId = facilitateur?.compte.id ?? "";
   const [foyers, setFoyers] = useState<Foyer[]>([]);
   const [foyerId, setFoyerId] = useState<string | null>(null);
   const [nouveauFoyer, setNouveauFoyer] = useState(false);
   const [localite, setLocalite] = useState("");
   const [adultes, setAdultes] = useState("2");
   const [enfants, setEnfants] = useState("1");
-  const [difficultes, setDifficultes] = useState<string[]>([]);
+  const [difficultes, setDifficultes] = useState<DifficulteFonctionnelle[]>([]);
   const [dejaParticipe, setDejaParticipe] = useState(false);
   const [observations, setObservations] = useState<string[]>([]);
   const [suiviPrevu, setSuiviPrevu] = useState<boolean | null>(null);
   const [envoi, setEnvoi] = useState(false);
   const [confirme, setConfirme] = useState(false);
 
-  useEffect(() => {
-    getFoyers().then((list) => {
-      setFoyers(list);
-      if (list.length === 0) setNouveauFoyer(true);
-    });
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      if (!facilitateurId) return;
+      getFoyers(facilitateurId).then((list) => {
+        setFoyers(list);
+        if (list.length === 0) setNouveauFoyer(true);
+      });
+      setConfirme(false);
+    }, [facilitateurId])
+  );
 
-  const toggle = (list: string[], value: string) =>
+  const toggle = <T,>(list: T[], value: T): T[] =>
     list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
 
   const isValid =
@@ -62,6 +76,7 @@ export default function VisiteScreen() {
     if (!isValid) return;
     setEnvoi(true);
     await enregistrerVisite({
+      facilitateurId,
       foyer: nouveauFoyer
         ? {
             localite,
@@ -176,17 +191,17 @@ export default function VisiteScreen() {
               <View style={styles.chipRow}>
                 {DIFFICULTES.map((d) => (
                   <TouchableOpacity
-                    key={d}
-                    style={[styles.chip, difficultes.includes(d) && styles.chipActive]}
-                    onPress={() => setDifficultes((prev) => toggle(prev, d))}
+                    key={d.value}
+                    style={[styles.chip, difficultes.includes(d.value) && styles.chipActive]}
+                    onPress={() => setDifficultes((prev) => toggle(prev, d.value))}
                   >
                     <Text
                       style={[
                         styles.chipText,
-                        difficultes.includes(d) && styles.chipTextActive,
+                        difficultes.includes(d.value) && styles.chipTextActive,
                       ]}
                     >
-                      {d}
+                      {d.label}
                     </Text>
                   </TouchableOpacity>
                 ))}

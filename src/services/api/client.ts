@@ -1,17 +1,15 @@
-import Constants from "expo-constants";
-
 /**
  * Adresse de l'API Laravel de référence (voir ../mvoe/routes/api.php).
- * Tant qu'aucun serveur n'est réellement déployé, chaque appel échouera
- * simplement par erreur réseau — ce qui est le comportement normal et
- * attendu d'une appli hors-ligne d'abord : l'écriture reste dans la file
- * locale (`src/db/repositories/syncQueue.ts`) jusqu'à ce qu'un serveur
- * réponde. Changez cette adresse (app.json → expo.extra.apiBaseUrl) pour
- * pointer vers un vrai serveur Laravel.
+ * Portée par `EXPO_PUBLIC_API_BASE_URL` (fichier .env) : Metro l'inline
+ * directement dans le bundle au build, ce qui est fiable sur toutes les
+ * plateformes — `Constants.expoConfig.extra` ne se charge pas de façon
+ * fiable côté web en développement. Si le serveur n'est pas joignable,
+ * chaque appel échoue par erreur réseau, ce qui est le comportement normal
+ * d'une appli hors-ligne d'abord : l'écriture reste dans la file locale
+ * (`src/db/repositories/syncQueue.ts`) jusqu'à ce qu'un serveur réponde.
  */
 export const API_BASE_URL: string =
-  (Constants.expoConfig?.extra?.apiBaseUrl as string | undefined) ??
-  "http://localhost:8000/api";
+  process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api";
 
 export class ApiNetworkError extends Error {
   constructor(message = "Le serveur est injoignable.") {

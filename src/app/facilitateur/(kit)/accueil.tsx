@@ -1,15 +1,13 @@
 import KitHeader from "@/components/facilitateur/KitHeader";
 import { Colors } from "@/constants/colors";
-import {
-  getCohortesDisponibles,
-  getPaquet,
-  getPaquetActuel,
-} from "@/services/facilitateur";
-import type { CohortePaquet, CohorteResume } from "@/types";
+import { useAuth } from "@/contexts/AuthContext";
+import { getPaquet, telechargerCohorte } from "@/services/facilitateur";
+import type { CohortePaquet } from "@/types";
 import { Ionicons } from "@expo/vector-icons";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
+import { useFocusEffect } from "expo-router/react-navigation";
 import { useNavigation, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -32,38 +30,30 @@ const SHORTCUTS: {
   { icon: "bar-chart-outline", label: "Mon activité", route: "/facilitateur/tableau-de-bord" },
 ];
 
-const STATUT_LABEL: Record<string, string> = {
-  a_venir: "À venir",
-  en_cours: "En cours",
-  terminee: "Terminée",
-};
-
 export default function AccueilScreen() {
   const navigation = useNavigation<DrawerNavigationProp<any>>();
   const router = useRouter();
-  const [cohortesDisponibles, setCohortesDisponibles] = useState<
-    CohorteResume[] | null
-  >(null);
-  const [paquet, setPaquet] = useState<CohortePaquet | null | undefined>(
-    undefined
-  );
+  const { facilitateur } = useAuth();
+  const facilitateurId = facilitateur?.compte.id ?? "";
+  const [paquet, setPaquet] = useState<CohortePaquet | null | undefined>(undefined);
   const [telechargement, setTelechargement] = useState(false);
 
-  useEffect(() => {
-    const local = getPaquetActuel();
-    if (local) {
-      setPaquet(local);
-    } else {
-      getCohortesDisponibles().then(setCohortesDisponibles);
-      setPaquet(null);
-    }
-  }, []);
+  const charger = useCallback(() => {
+    if (facilitateurId) getPaquet(facilitateurId).then(setPaquet);
+  }, [facilitateurId]);
 
-  const handleTelecharger = async (cohorteId: string) => {
+  useFocusEffect(
+    useCallback(() => {
+      charger();
+    }, [charger])
+  );
+
+  const handleTelecharger = async () => {
+    if (!paquet) return;
     setTelechargement(true);
     try {
-      const result = await getPaquet(cohorteId);
-      setPaquet(result);
+      await telechargerCohorte(paquet.cohorte.id);
+      charger();
     } finally {
       setTelechargement(false);
     }
@@ -88,27 +78,30 @@ export default function AccueilScreen() {
       >
         {!paquet ? (
           <View style={styles.card}>
+            <Text style={styles.cardSubtitle}>
+              Aucune cohorte ne vous est assignée pour l&apos;instant.
+            </Text>
+          </View>
+        ) : !paquet.telechargeLe ? (
+          <View style={styles.card}>
             <Ionicons name="cloud-download-outline" size={32} color={Colors.primary} />
             <Text style={styles.cardTitle}>Télécharger votre cohorte</Text>
             <Text style={styles.cardSubtitle}>
               Le kit ne garde qu&apos;une seule cohorte hors-ligne à la fois.
               Téléchargez-la pendant que vous êtes en ligne.
             </Text>
-            {(cohortesDisponibles ?? []).map((cohorte) => (
-              <TouchableOpacity
-                key={cohorte.id}
-                style={styles.telechargerButton}
-                activeOpacity={0.85}
-                disabled={telechargement}
-                onPress={() => handleTelecharger(cohorte.id)}
-              >
-                <Text style={styles.telechargerButtonText}>
-                  {telechargement
-                    ? "Téléchargement…"
-                    : `Télécharger « ${cohorte.libelle} »`}
-                </Text>
-              </TouchableOpacity>
-            ))}
+            <TouchableOpacity
+              style={styles.telechargerButton}
+              activeOpacity={0.85}
+              disabled={telechargement}
+              onPress={handleTelecharger}
+            >
+              <Text style={styles.telechargerButtonText}>
+                {telechargement
+                  ? "Téléchargement…"
+                  : `Télécharger « ${paquet.cohorte.libelle} »`}
+              </Text>
+            </TouchableOpacity>
           </View>
         ) : (
           <>
@@ -121,33 +114,32 @@ export default function AccueilScreen() {
               </Text>
             </View>
 
-            {/* Séances */}
-            {paquet.seances.map((seance) => (
-              <TouchableOpacity
-                key={seance.id}
-                style={styles.card}
-                activeOpacity={0.85}
-                onPress={() => router.push("/facilitateur/seance")}
-              >
-                <View style={styles.seanceHeader}>
-                  <Text style={styles.seanceModule}>{seance.moduleTitre}</Text>
-                  <View
-                    style={[
-                      styles.statutBadge,
-                      seance.statut === "en_cours" && styles.statutBadgeEnCours,
-                      seance.statut === "terminee" && styles.statutBadgeTerminee,
-                    ]}
-                  >
-                    <Text style={styles.statutBadgeText}>
-                      {STATUT_LABEL[seance.statut]}
-                    </Text>
-                  </View>
-                </View>
-                <Text style={styles.seanceMeta}>
-                  {seance.sequences.length} séquences
+            {/* Séance */}
+            <TouchableOpacity
+              style={styles.card}
+              activeOpacity={0.85}
+              onPress={() => router.push("/facilitateur/seance")}
+            >
+              <View style={styles.seanceHeader}>
+                <Text style={styles.seanceModule}>
+                  {paquet.seanceEnCours?.moduleTitre ??
+                    paquet.sequencesModuleEnCours[0]?.moduleCode}
                 </Text>
-              </TouchableOpacity>
-            ))}
+                <View
+                  style={[
+                    styles.statutBadge,
+                    paquet.seanceEnCours && styles.statutBadgeEnCours,
+                  ]}
+                >
+                  <Text style={styles.statutBadgeText}>
+                    {paquet.seanceEnCours ? "En cours" : "Prête à démarrer"}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.seanceMeta}>
+                {paquet.sequencesModuleEnCours.length} séquences
+              </Text>
+            </TouchableOpacity>
 
             {/* Raccourcis */}
             <Text style={styles.sectionTitle}>Accès rapide</Text>
@@ -258,9 +250,6 @@ const styles = StyleSheet.create({
   },
   statutBadgeEnCours: {
     backgroundColor: "#DBEAFE",
-  },
-  statutBadgeTerminee: {
-    backgroundColor: "#D1FAE5",
   },
   statutBadgeText: {
     fontSize: 12,

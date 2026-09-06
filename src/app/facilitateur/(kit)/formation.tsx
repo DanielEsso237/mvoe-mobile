@@ -1,11 +1,13 @@
 import KitHeader from "@/components/facilitateur/KitHeader";
 import { Colors } from "@/constants/colors";
+import { useAuth } from "@/contexts/AuthContext";
 import { getFormation, marquerSectionLue } from "@/services/facilitateur";
 import type { ModuleFormation } from "@/types";
 import { Ionicons } from "@expo/vector-icons";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
+import { useFocusEffect } from "expo-router/react-navigation";
 import { useNavigation } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -17,13 +19,17 @@ import {
 
 export default function FormationScreen() {
   const navigation = useNavigation<DrawerNavigationProp<any>>();
+  const { facilitateur } = useAuth();
+  const facilitateurId = facilitateur?.compte.id ?? "";
   const [modules, setModules] = useState<ModuleFormation[] | null>(null);
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [sectionIndex, setSectionIndex] = useState(0);
 
-  useEffect(() => {
-    getFormation().then(setModules);
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      if (facilitateurId) getFormation(facilitateurId).then(setModules);
+    }, [facilitateurId])
+  );
 
   if (!modules) {
     return (
@@ -40,13 +46,10 @@ export default function FormationScreen() {
     setSectionIndex(0);
   };
 
-  const handleSectionVue = async (moduleCode: string, sectionId: string) => {
-    const updated = await marquerSectionLue(moduleCode, sectionId);
-    if (updated) {
-      setModules((prev) =>
-        prev ? prev.map((m) => (m.code === moduleCode ? updated : m)) : prev
-      );
-    }
+  const handleSectionVue = async (moduleCode: string, sectionOrdre: number) => {
+    await marquerSectionLue(facilitateurId, moduleCode, sectionOrdre);
+    const updated = await getFormation(facilitateurId);
+    setModules(updated);
   };
 
   if (selected) {
@@ -66,7 +69,7 @@ export default function FormationScreen() {
                 style={styles.tocRow}
                 onPress={() => {
                   setSectionIndex(index);
-                  if (!s.lue) handleSectionVue(selected.code, s.id);
+                  if (!s.lue) handleSectionVue(selected.code, s.ordre);
                 }}
               >
                 <Ionicons
@@ -110,7 +113,7 @@ export default function FormationScreen() {
                   const nextIndex = sectionIndex + 1;
                   setSectionIndex(nextIndex);
                   const next = selected.sections[nextIndex];
-                  if (next && !next.lue) handleSectionVue(selected.code, next.id);
+                  if (next && !next.lue) handleSectionVue(selected.code, next.ordre);
                 }}
               >
                 <Text style={styles.navButtonTextPrimary}>Suivante</Text>

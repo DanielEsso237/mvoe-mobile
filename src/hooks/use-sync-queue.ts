@@ -9,13 +9,23 @@ import type { EvenementFile } from "@/types";
  * qui déciderait, avec un vrai backend, si un envoi reste en attente.
  */
 export function useSyncQueue(): EvenementFile[] {
-  const [file, setFile] = useState<EvenementFile[]>(() => getFileAttente());
+  const [file, setFile] = useState<EvenementFile[]>([]);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setFile(getFileAttente());
-    }, 1000);
-    return () => clearInterval(interval);
+    let annule = false;
+
+    const rafraichir = () => {
+      getFileAttente().then((f) => {
+        if (!annule) setFile(f);
+      });
+    };
+
+    rafraichir();
+    const interval = setInterval(rafraichir, 1000);
+    return () => {
+      annule = true;
+      clearInterval(interval);
+    };
   }, []);
 
   return file;

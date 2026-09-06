@@ -1,11 +1,18 @@
 import KitHeader from "@/components/facilitateur/KitHeader";
 import { Colors } from "@/constants/colors";
-import { getPaquetActuel } from "@/services/facilitateur";
+import { useAuth } from "@/contexts/AuthContext";
+import {
+  demarrerSeance,
+  getPaquet,
+  getSequenceIdsOuvertes,
+  ouvrirSequence,
+} from "@/services/facilitateur";
 import type { CohortePaquet, Sequence } from "@/types";
 import { Ionicons } from "@expo/vector-icons";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
+import { useFocusEffect } from "expo-router/react-navigation";
 import { useNavigation, useRouter } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -24,28 +31,50 @@ function formatChrono(totalSeconds: number) {
 export default function SeanceScreen() {
   const navigation = useNavigation<DrawerNavigationProp<any>>();
   const router = useRouter();
+  const { facilitateur } = useAuth();
+  const facilitateurId = facilitateur?.compte.id ?? "";
   const [paquet, setPaquet] = useState<CohortePaquet | null | undefined>(
     undefined
   );
-  const [demarree, setDemarree] = useState(false);
+  const [demarrage, setDemarrage] = useState(false);
   const [sequenceIndex, setSequenceIndex] = useState(0);
   const [langue, setLangue] = useState<string | null>(null);
   const [modalite, setModalite] = useState<"audio" | "texte">("audio");
   const [chrono, setChrono] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => {
-    setPaquet(getPaquetActuel());
-  }, []);
+  const charger = useCallback(async () => {
+    if (!facilitateurId) return;
+    const p = await getPaquet(facilitateurId);
+    setPaquet(p);
+    if (p?.seanceEnCours) {
+      const ouvertes = await getSequenceIdsOuvertes(p.seanceEnCours.id);
+      const idx = Math.min(ouvertes.length, Math.max(p.sequencesModuleEnCours.length - 1, 0));
+      const seq = p.sequencesModuleEnCours[idx];
+      setSequenceIndex(idx);
+      setChrono(0);
+      setLangue(seq?.unite?.languesDisponibles.length ? seq.unite.languesDisponibles[0] : null);
+    } else {
+      setSequenceIndex(0);
+      setChrono(0);
+      setLangue(null);
+    }
+  }, [facilitateurId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      charger();
+    }, [charger])
+  );
 
   useEffect(() => {
-    if (demarree) {
+    if (paquet?.seanceEnCours) {
       timerRef.current = setInterval(() => setChrono((c) => c + 1), 1000);
     }
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [demarree, sequenceIndex]);
+  }, [paquet?.seanceEnCours, sequenceIndex]);
 
   if (paquet === undefined) {
     return (
@@ -55,9 +84,7 @@ export default function SeanceScreen() {
     );
   }
 
-  const seance = paquet?.seances.find((s) => s.sequences.length > 0);
-
-  if (!paquet || !seance) {
+  if (!paquet || paquet.sequencesModuleEnCours.length === 0) {
     return (
       <View style={styles.root}>
         <KitHeader title="Séance" onMenuPress={() => navigation.openDrawer()} />
@@ -71,22 +98,27 @@ export default function SeanceScreen() {
     );
   }
 
-  const sequences = seance.sequences;
-  const currentSequence: Sequence | undefined = sequences[sequenceIndex];
+  const sequences: Sequence[] = paquet.sequencesModuleEnCours;
+  const moduleCode = sequences[0].moduleCode;
+  const moduleTitre = paquet.seanceEnCours?.moduleTitre ?? moduleCode;
+  const currentSequence = sequences[sequenceIndex];
   const depassement = currentSequence
     ? chrono > currentSequence.dureeMinutes * 60
     : false;
 
-  const handleDemarrer = () => {
-    setDemarree(true);
-    setSequenceIndex(0);
-    setChrono(0);
-    if (langue === null && currentSequence?.unite?.languesDisponibles.length) {
-      setLangue(currentSequence.unite.languesDisponibles[0]);
+  const handleDemarrer = async () => {
+    setDemarrage(true);
+    try {
+      await demarrerSeance(paquet.cohorte.id, moduleCode);
+      await charger();
+    } finally {
+      setDemarrage(false);
     }
   };
 
-  const handleSuivante = () => {
+  const handleSuivante = async () => {
+    if (!paquet.seanceEnCours) return;
+    await ouvrirSequence(paquet.seanceEnCours.id, currentSequence.id, chrono);
     if (sequenceIndex < sequences.length - 1) {
       setSequenceIndex((i) => i + 1);
       setChrono(0);
@@ -94,6 +126,11 @@ export default function SeanceScreen() {
       if (next.unite?.languesDisponibles.length) {
         setLangue(next.unite.languesDisponibles[0]);
       }
+    } else {
+      router.push({
+        pathname: "/facilitateur/fidelite",
+        params: { seanceId: paquet.seanceEnCours.id },
+      } as any);
     }
   };
 
@@ -108,15 +145,18 @@ export default function SeanceScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.moduleTitle}>{seance.moduleTitre}</Text>
+        <Text style={styles.moduleTitle}>{moduleTitre}</Text>
 
-        {!demarree ? (
+        {!paquet.seanceEnCours ? (
           <TouchableOpacity
             style={styles.demarrerButton}
             activeOpacity={0.85}
             onPress={handleDemarrer}
+            disabled={demarrage}
           >
-            <Text style={styles.demarrerButtonText}>Démarrer la séance</Text>
+            <Text style={styles.demarrerButtonText}>
+              {demarrage ? "Démarrage…" : "Démarrer la séance"}
+            </Text>
           </TouchableOpacity>
         ) : (
           <>
@@ -247,14 +287,7 @@ export default function SeanceScreen() {
               >
                 <Text style={styles.pointageButtonText}>Pointer les présences</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.suivanteButton}
-                onPress={
-                  estDerniere
-                    ? () => router.push("/facilitateur/fidelite")
-                    : handleSuivante
-                }
-              >
+              <TouchableOpacity style={styles.suivanteButton} onPress={handleSuivante}>
                 <Text style={styles.suivanteButtonText}>
                   {estDerniere ? "Terminer la séance" : "Séquence suivante"}
                 </Text>

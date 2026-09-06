@@ -1,130 +1,107 @@
-import {
-  MOCK_ACTIVITES_TERRAIN,
-  MOCK_COHORTES_DISPONIBLES,
-  MOCK_FOYERS,
-  MOCK_GROUPES_SOUTIEN,
-  MOCK_MODULES_FORMATION,
-  MOCK_PAQUET,
-  MOCK_SIGNALEMENTS_FACILITATEUR,
-  MOCK_TABLEAU_DE_BORD_FACILITATEUR,
-} from "@/mocks/facilitateur";
+import * as repo from "@/db/repositories/facilitateur";
+import { listerEnAttente } from "@/db/repositories/syncQueue";
 import type {
   ActiviteTerrain,
+  ActiviteType,
   CohortePaquet,
   CohorteResume,
+  DifficulteFonctionnelle,
   EvenementFile,
-  EvenementType,
   FideliteReponse,
   Foyer,
   GroupeSoutien,
   ModuleFormation,
-  ParentInscrit,
   PresenceStatut,
+  Seance,
   SignalementFacilitateur,
   SignalementGraviteFacilitateur,
   TableauDeBordFacilitateur,
-  Visite,
+  TypeSignalementFacilitateur,
 } from "@/types";
-import { delay } from "./client";
-
-function clone<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value));
-}
-
-let paquet: CohortePaquet | null = null;
-let activites = clone(MOCK_ACTIVITES_TERRAIN);
-let foyers = clone(MOCK_FOYERS);
-let visites: Visite[] = [];
-let groupesSoutien = clone(MOCK_GROUPES_SOUTIEN);
-let signalements = clone(MOCK_SIGNALEMENTS_FACILITATEUR);
-let modulesFormation = clone(MOCK_MODULES_FORMATION);
 
 /**
- * Le déroulé fonctionne "hors-ligne d'abord" : chaque écriture de terrain
- * (activité, visite, signalement, présence, fidélité, progression) est
- * d'abord ajoutée à cette file locale, puis "synchronisée" (ici simulée,
- * faute de backend). Le compteur de synchro de l'UI se base dessus.
+ * Toutes ces fonctions lisent et écrivent la base SQLite locale (le
+ * "backend" tant que l'appareil est hors-ligne, voir `src/db/`). Chaque
+ * écriture de terrain dépose aussi un événement dans la file de
+ * synchronisation, que le moteur (`src/services/sync/engine.ts`) rejoue
+ * vers l'API Laravel de référence dès que le réseau revient.
  */
-let fileAttente: EvenementFile[] = [];
 
-export function getFileAttente(): EvenementFile[] {
-  return clone(fileAttente);
+export async function getCohortesDisponibles(
+  facilitateurId: string
+): Promise<CohorteResume[]> {
+  const cohorte = await repo.getCohorteDuFacilitateur(facilitateurId);
+  if (!cohorte) return [];
+  const parents = await repo.getParentsInscrits(cohorte.id);
+  return [
+    {
+      id: cohorte.id,
+      libelle: cohorte.libelle,
+      parents: parents.length,
+      ratioMax: cohorte.ratio_max,
+      dateDebut: cohorte.date_debut,
+    },
+  ];
 }
 
-function enqueuer(type: EvenementType, charge: Record<string, unknown>) {
-  const evenement: EvenementFile = {
-    uuid: `evt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    type,
-    creeLe: new Date().toISOString(),
-    charge,
-    statut: "en_attente",
-  };
-  fileAttente = [...fileAttente, evenement];
-  // Simule la réconciliation en arrière-plan : sans vrai réseau, on
-  // "synchronise" après un court délai plutôt qu'instantanément, pour que
-  // le compteur reste visible un instant (comme sur le terrain).
-  setTimeout(() => {
-    fileAttente = fileAttente.map((e) =>
-      e.uuid === evenement.uuid ? { ...e, statut: "synchronise" } : e
-    );
-  }, 1500);
+export async function getPaquet(facilitateurId: string): Promise<CohortePaquet | null> {
+  return repo.getPaquet(facilitateurId);
 }
 
-export async function getCohortesDisponibles(): Promise<CohorteResume[]> {
-  return delay(MOCK_COHORTES_DISPONIBLES);
+export async function telechargerCohorte(cohorteId: string): Promise<void> {
+  await repo.marquerCohorteTelechargee(cohorteId);
 }
 
-export async function getPaquet(cohorteId: string): Promise<CohortePaquet> {
-  if (!paquet) {
-    paquet = clone(MOCK_PAQUET);
-  }
-  return delay(paquet);
+export async function demarrerSeance(
+  cohorteId: string,
+  moduleCode: string
+): Promise<Seance> {
+  return repo.demarrerSeance(cohorteId, moduleCode);
 }
 
-export function getPaquetActuel(): CohortePaquet | null {
-  return paquet ? clone(paquet) : null;
+export async function ouvrirSequence(
+  seanceId: string,
+  sequenceId: string,
+  dureeReelleSecondes: number
+): Promise<void> {
+  return repo.ouvrirSequence(seanceId, sequenceId, dureeReelleSecondes);
+}
+
+export async function getPresencesDeLaSeance(
+  seanceId: string
+): Promise<Record<string, PresenceStatut>> {
+  return repo.getPresencesDeLaSeance(seanceId);
+}
+
+export async function getSequenceIdsOuvertes(seanceId: string): Promise<string[]> {
+  return repo.getSequenceIdsOuvertes(seanceId);
 }
 
 export async function pointerPresence(
+  seanceId: string,
   parentId: string,
   statut: PresenceStatut
-): Promise<ParentInscrit[]> {
-  if (!paquet) throw new Error("Aucun paquet téléchargé.");
-  paquet = {
-    ...paquet,
-    parents: paquet.parents.map((p) =>
-      p.id === parentId ? { ...p, presence: statut } : p
-    ),
-  };
-  enqueuer("presence", { parentId, statut });
-  return delay(paquet.parents);
+): Promise<void> {
+  return repo.pointerPresence(seanceId, parentId, statut);
 }
 
 export async function definirRepereLocal(
   parentId: string,
   repere: string
-): Promise<ParentInscrit[]> {
-  if (!paquet) throw new Error("Aucun paquet téléchargé.");
-  // Un repère est une note privée à l'appareil : jamais mise en file, jamais
-  // synchronisée.
-  paquet = {
-    ...paquet,
-    parents: paquet.parents.map((p) =>
-      p.id === parentId ? { ...p, repereLocal: repere } : p
-    ),
-  };
-  return delay(paquet.parents, 150);
+): Promise<void> {
+  return repo.definirRepereLocal(parentId, repere);
 }
 
 export async function soumettreFidelite(
   seanceId: string,
-  reponses: FideliteReponse[]
+  reponses: FideliteReponse[],
+  commentaireGeneral?: string
 ): Promise<void> {
-  enqueuer("fidelite", { seanceId, reponses });
-  return delay(undefined, 300);
+  return repo.soumettreFidelite(seanceId, reponses, commentaireGeneral);
 }
 
 export interface InscrireParentInput {
+  cohorteId: string;
   langue: string;
   situation: "union" | "seul" | "non_renseigne";
   revenu: "regulier" | "irregulier" | "aucun" | "non_renseigne";
@@ -135,127 +112,110 @@ export interface InscrireParentInput {
 export async function inscrireParent(
   input: InscrireParentInput
 ): Promise<{ codeParent: string; codeAcces: string }> {
-  if (!paquet) throw new Error("Aucun paquet téléchargé.");
-  const numero = paquet.parents.length + 1;
-  const codeParent = `EB2-${String(numero).padStart(2, "0")}`;
-  const codeAcces = String(Math.floor(1000 + Math.random() * 9000));
+  return repo.inscrireParent(input);
+}
 
-  const nouveauParent: ParentInscrit = {
-    id: `p-${Date.now()}`,
-    codeParent,
-    repereLocal: input.repereLocal,
-    presence: "a_pointer",
-  };
-  paquet = { ...paquet, parents: [...paquet.parents, nouveauParent] };
-  enqueuer("inscription_parent", { codeParent, ...input });
-  return delay({ codeParent, codeAcces }, 400);
+export interface EnregistrerActiviteInput {
+  facilitateurId: string;
+  cohorteId?: string;
+  type: ActiviteType;
+  date: string;
+  dureeMinutes: number;
+  lieu: string;
+  groupeSoutienId?: string;
+  commentaire?: string;
+  personnesTouchees: number;
+  dontHandicap: number;
+  hommes: number;
+  femmes: number;
 }
 
 export async function enregistrerActivite(
-  input: Omit<ActiviteTerrain, "id">
+  input: EnregistrerActiviteInput
 ): Promise<ActiviteTerrain> {
-  const activite: ActiviteTerrain = { ...input, id: `act-${Date.now()}` };
-  activites = [activite, ...activites];
-  enqueuer("activite", { ...input });
-  return delay(activite, 350);
+  return repo.enregistrerActivite(input);
 }
 
-export async function getActivites(): Promise<ActiviteTerrain[]> {
-  return delay(activites);
+export async function getActivites(facilitateurId: string): Promise<ActiviteTerrain[]> {
+  return repo.getActivites(facilitateurId);
 }
 
-export async function getFoyers(): Promise<Foyer[]> {
-  return delay(foyers);
+export async function getFoyers(facilitateurId: string): Promise<Foyer[]> {
+  return repo.getFoyers(facilitateurId);
 }
 
 export interface EnregistrerVisiteInput {
-  foyer: Omit<Foyer, "id"> | { foyerId: string };
+  facilitateurId: string;
+  foyer:
+    | { foyerId: string }
+    | {
+        localite: string;
+        adultes: number;
+        enfants: number;
+        difficultesFonctionnelles: DifficulteFonctionnelle[];
+        dejaParticipeProgramme: boolean;
+      };
   date: string;
   observations: string[];
   suiviPrevu: boolean;
 }
 
-export async function enregistrerVisite(
-  input: EnregistrerVisiteInput
-): Promise<Visite> {
-  let foyerId: string;
-  if ("foyerId" in input.foyer) {
-    foyerId = input.foyer.foyerId;
-  } else {
-    const nouveauFoyer: Foyer = { ...input.foyer, id: `foyer-${Date.now()}` };
-    foyers = [nouveauFoyer, ...foyers];
-    foyerId = nouveauFoyer.id;
-  }
-
-  const visite: Visite = {
-    id: `visite-${Date.now()}`,
-    foyerId,
-    date: input.date,
-    observations: input.observations,
-    suiviPrevu: input.suiviPrevu,
-  };
-  visites = [visite, ...visites];
-  enqueuer("visite", { ...input, foyerId });
-  return delay(visite, 350);
+export async function enregistrerVisite(input: EnregistrerVisiteInput): Promise<void> {
+  return repo.enregistrerVisite(input);
 }
 
-export async function getGroupesSoutien(): Promise<GroupeSoutien[]> {
-  return delay(groupesSoutien);
+export async function getGroupesSoutien(facilitateurId: string): Promise<GroupeSoutien[]> {
+  return repo.getGroupesSoutien(facilitateurId);
 }
 
-export async function getSignalements(): Promise<SignalementFacilitateur[]> {
-  return delay(signalements);
+export async function getSignalements(
+  facilitateurId: string
+): Promise<SignalementFacilitateur[]> {
+  return repo.getSignalements(facilitateurId);
 }
 
 export interface SoumettreSignalementInput {
-  type: string;
+  facilitateurId: string;
+  type: TypeSignalementFacilitateur;
   gravite: SignalementGraviteFacilitateur;
+  activiteId?: string;
 }
 
 export async function soumettreSignalement(
   input: SoumettreSignalementInput
 ): Promise<SignalementFacilitateur> {
-  const signalement: SignalementFacilitateur = {
-    id: `sig-${Date.now()}`,
-    type: input.type,
-    gravite: input.gravite,
-    soumisLe: new Date().toISOString().slice(0, 10),
-    statut: "soumis",
-    joursAttente: 0,
-  };
-  signalements = [signalement, ...signalements];
-  enqueuer("signalement", { ...input });
-  return delay(signalement, 350);
+  return repo.soumettreSignalement(input);
 }
 
-export async function getFormation(): Promise<ModuleFormation[]> {
-  return delay(modulesFormation);
-}
-
-export async function getFormationModule(
-  code: string
-): Promise<ModuleFormation | undefined> {
-  return delay(modulesFormation.find((m) => m.code === code));
+export async function getFormation(facilitateurId: string): Promise<ModuleFormation[]> {
+  return repo.getModulesFormation(facilitateurId);
 }
 
 export async function marquerSectionLue(
+  facilitateurId: string,
   moduleCode: string,
-  sectionId: string
-): Promise<ModuleFormation | undefined> {
-  modulesFormation = modulesFormation.map((m) => {
-    if (m.code !== moduleCode) return m;
-    const sections = m.sections.map((s) =>
-      s.id === sectionId ? { ...s, lue: true } : s
-    );
-    const progression =
-      sections.filter((s) => s.lue).length / sections.length;
-    return { ...m, sections, progression, termine: progression === 1 };
-  });
-  enqueuer("progression_formation", { moduleCode, sectionId });
-  const module = modulesFormation.find((m) => m.code === moduleCode);
-  return delay(module);
+  sectionOrdre: number
+): Promise<void> {
+  return repo.marquerSectionLue(facilitateurId, moduleCode, sectionOrdre);
 }
 
-export async function getTableauDeBord(): Promise<TableauDeBordFacilitateur> {
-  return delay(MOCK_TABLEAU_DE_BORD_FACILITATEUR);
+export async function getTableauDeBord(
+  facilitateurId: string
+): Promise<TableauDeBordFacilitateur> {
+  return repo.getTableauDeBord(facilitateurId);
+}
+
+export async function getFileAttente(): Promise<EvenementFile[]> {
+  const rows = await listerEnAttente();
+  return rows.map((r) => {
+    const parsed = JSON.parse(r.payload);
+    return {
+      uuid: parsed.uuid,
+      type: parsed.type,
+      seanceUuid: parsed.seance_uuid,
+      emisA: parsed.emis_a,
+      charge: parsed.charge,
+      statut: r.statut === "erreur" ? "erreur" : "en_attente",
+    };
+  });
 }

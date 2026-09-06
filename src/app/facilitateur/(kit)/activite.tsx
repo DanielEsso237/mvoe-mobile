@@ -1,10 +1,12 @@
 import KitHeader from "@/components/facilitateur/KitHeader";
 import { Colors } from "@/constants/colors";
-import { enregistrerActivite, getGroupesSoutien } from "@/services/facilitateur";
+import { useAuth } from "@/contexts/AuthContext";
+import { enregistrerActivite, getGroupesSoutien, getPaquet } from "@/services/facilitateur";
 import type { ActiviteType, GroupeSoutien } from "@/types";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
+import { useFocusEffect } from "expo-router/react-navigation";
 import { useNavigation, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   ScrollView,
   StyleSheet,
@@ -15,10 +17,12 @@ import {
 } from "react-native";
 
 const TYPES: { value: ActiviteType; label: string }[] = [
-  { value: "causerie", label: "Causerie" },
-  { value: "atelier", label: "Atelier" },
+  { value: "causerie_educative", label: "Causerie éducative" },
+  { value: "atelier_pratique", label: "Atelier pratique" },
   { value: "porte_a_porte", label: "Porte-à-porte" },
-  { value: "reunion_groupe", label: "Réunion de groupe" },
+  { value: "visite_domicile", label: "Visite à domicile" },
+  { value: "reunion_gsp", label: "Réunion de groupe de soutien" },
+  { value: "sensibilisation_publique", label: "Sensibilisation publique" },
 ];
 
 function today() {
@@ -28,8 +32,11 @@ function today() {
 export default function ActiviteScreen() {
   const navigation = useNavigation<DrawerNavigationProp<any>>();
   const router = useRouter();
+  const { facilitateur } = useAuth();
+  const facilitateurId = facilitateur?.compte.id ?? "";
+  const [cohorteId, setCohorteId] = useState<string | undefined>(undefined);
   const [groupes, setGroupes] = useState<GroupeSoutien[]>([]);
-  const [type, setType] = useState<ActiviteType>("causerie");
+  const [type, setType] = useState<ActiviteType>("causerie_educative");
   const [date] = useState(today());
   const [duree, setDuree] = useState("45");
   const [lieu, setLieu] = useState("");
@@ -43,9 +50,14 @@ export default function ActiviteScreen() {
   const [confirme, setConfirme] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
 
-  useEffect(() => {
-    getGroupesSoutien().then(setGroupes);
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      if (!facilitateurId) return;
+      getGroupesSoutien(facilitateurId).then(setGroupes);
+      getPaquet(facilitateurId).then((p) => setCohorteId(p?.cohorte.id));
+      setConfirme(false);
+    }, [facilitateurId])
+  );
 
   const nTouchees = Number(touchees) || 0;
   const nHandicap = Number(handicap) || 0;
@@ -73,6 +85,8 @@ export default function ActiviteScreen() {
     setErreur(null);
     setEnvoi(true);
     await enregistrerActivite({
+      facilitateurId,
+      cohorteId,
       type,
       date,
       dureeMinutes: Number(duree),
@@ -154,7 +168,7 @@ export default function ActiviteScreen() {
             onChangeText={setLieu}
           />
 
-          {type === "reunion_groupe" && groupes.length > 0 && (
+          {type === "reunion_gsp" && groupes.length > 0 && (
             <>
               <Text style={styles.label}>GROUPE DE SOUTIEN</Text>
               <View style={styles.chipRow}>

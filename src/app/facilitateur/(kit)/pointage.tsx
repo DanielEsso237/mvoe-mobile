@@ -1,11 +1,18 @@
 import KitHeader from "@/components/facilitateur/KitHeader";
 import { Colors } from "@/constants/colors";
-import { definirRepereLocal, getPaquetActuel, pointerPresence } from "@/services/facilitateur";
+import { useAuth } from "@/contexts/AuthContext";
+import {
+  definirRepereLocal,
+  getPaquet,
+  getPresencesDeLaSeance,
+  pointerPresence,
+} from "@/services/facilitateur";
 import type { ParentInscrit, PresenceStatut } from "@/types";
 import { Ionicons } from "@expo/vector-icons";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
+import { useFocusEffect } from "expo-router/react-navigation";
 import { useNavigation } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -39,16 +46,30 @@ function pastilleStyle(statut: PresenceStatut) {
 
 export default function PointageScreen() {
   const navigation = useNavigation<DrawerNavigationProp<any>>();
-  const [parents, setParents] = useState<ParentInscrit[] | null>(null);
+  const { facilitateur } = useAuth();
+  const facilitateurId = facilitateur?.compte.id ?? "";
+  const [seanceId, setSeanceId] = useState<string | null | undefined>(undefined);
+  const [parents, setParents] = useState<ParentInscrit[]>([]);
+  const [presences, setPresences] = useState<Record<string, PresenceStatut>>({});
   const [repereOuvert, setRepereOuvert] = useState<string | null>(null);
   const [repereTexte, setRepereTexte] = useState("");
 
-  useEffect(() => {
-    const paquet = getPaquetActuel();
-    setParents(paquet ? paquet.parents : []);
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      if (!facilitateurId) return;
+      getPaquet(facilitateurId).then(async (paquet) => {
+        if (!paquet?.seanceEnCours) {
+          setSeanceId(null);
+          return;
+        }
+        setParents(paquet.parents);
+        setSeanceId(paquet.seanceEnCours.id);
+        setPresences(await getPresencesDeLaSeance(paquet.seanceEnCours.id));
+      });
+    }, [facilitateurId])
+  );
 
-  if (!parents) {
+  if (seanceId === undefined) {
     return (
       <View style={styles.loadingRoot}>
         <ActivityIndicator color={Colors.primary} />
@@ -56,16 +77,26 @@ export default function PointageScreen() {
     );
   }
 
-  const pointes = parents.filter((p) => p.presence !== "a_pointer").length;
+  if (!seanceId) {
+    return (
+      <View style={styles.root}>
+        <KitHeader title="Pointage" onMenuPress={() => navigation.openDrawer()} />
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyStateText}>
+            Démarrez d&apos;abord une séance depuis « Séance ».
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  const statutDe = (parentId: string): PresenceStatut => presences[parentId] ?? "a_pointer";
+  const pointes = parents.filter((p) => statutDe(p.id) !== "a_pointer").length;
 
   const handleCycle = async (parent: ParentInscrit) => {
-    const suivant = nextStatut(parent.presence);
-    setParents((prev) =>
-      prev
-        ? prev.map((p) => (p.id === parent.id ? { ...p, presence: suivant } : p))
-        : prev
-    );
-    await pointerPresence(parent.id, suivant);
+    const suivant = nextStatut(statutDe(parent.id));
+    setPresences((prev) => ({ ...prev, [parent.id]: suivant }));
+    await pointerPresence(seanceId, parent.id, suivant);
   };
 
   const ouvrirRepere = (parent: ParentInscrit) => {
@@ -77,11 +108,7 @@ export default function PointageScreen() {
     if (!repereOuvert) return;
     await definirRepereLocal(repereOuvert, repereTexte);
     setParents((prev) =>
-      prev
-        ? prev.map((p) =>
-            p.id === repereOuvert ? { ...p, repereLocal: repereTexte } : p
-          )
-        : prev
+      prev.map((p) => (p.id === repereOuvert ? { ...p, repereLocal: repereTexte } : p))
     );
     setRepereOuvert(null);
   };
@@ -101,7 +128,7 @@ export default function PointageScreen() {
 
         <View style={styles.grid}>
           {parents.map((parent) => {
-            const style = pastilleStyle(parent.presence);
+            const style = pastilleStyle(statutDe(parent.id));
             return (
               <View key={parent.id} style={styles.parentCell}>
                 <TouchableOpacity
@@ -168,6 +195,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: "#F3F4F6",
+  },
+  emptyState: {
+    flex: 1,
+    padding: 24,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyStateText: {
+    fontSize: 14,
+    color: Colors.textMuted,
+    textAlign: "center",
   },
   scroll: {
     flex: 1,
