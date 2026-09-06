@@ -1,5 +1,6 @@
 import ParentHeader from "@/components/parent/ParentHeader";
 import { Colors } from "@/constants/colors";
+import { useAuth } from "@/contexts/AuthContext";
 import { getFeuilletons } from "@/services/parent";
 import type { Feuilleton } from "@/types";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -23,6 +24,8 @@ function formatTemps(totalSeconds: number) {
 }
 
 export default function FeuilletonScreen() {
+  const { parent } = useAuth();
+  const langue = parent?.langue ?? "fr";
   const [feuilleton, setFeuilleton] = useState<Feuilleton | null>(null);
   const [episodeIndex, setEpisodeIndex] = useState(0);
   const [position, setPosition] = useState(0);
@@ -33,7 +36,7 @@ export default function FeuilletonScreen() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    getFeuilletons().then(async (f) => {
+    getFeuilletons(langue).then(async (f) => {
       setFeuilleton(f);
       const entries = await Promise.all(
         f.episodes.map(async (ep) => {
@@ -43,7 +46,7 @@ export default function FeuilletonScreen() {
       );
       setPositionsSauvees(Object.fromEntries(entries));
     });
-  }, []);
+  }, [langue]);
 
   const episode = feuilleton?.episodes[episodeIndex];
 

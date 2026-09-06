@@ -2,10 +2,11 @@ export interface ParentProgramme {
   id: string;
   codeParent: string;
   langue: string;
-  arrondissementId: string;
+  arrondissementId: string | null;
 }
 
 export interface ModuleCatalogue {
+  id: number;
   numero: number;
   titre: string;
   unitesCount: number;

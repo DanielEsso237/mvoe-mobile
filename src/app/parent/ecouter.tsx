@@ -34,13 +34,13 @@ export default function EcouterScreen() {
 
   const ouvrirModule = async (module: ModuleCatalogue) => {
     setSelectedModule(module);
-    const list = await getUnites(module.numero);
+    const list = await getUnites(module.id, langue);
     setUnites(list);
     setVue("unites");
   };
 
   const ouvrirUnite = async (uniteId: string, m: Modalite = "audio") => {
-    const detail = await getUnite(uniteId, m);
+    const detail = await getUnite(uniteId, m, langue);
     setUniteDetail(detail ?? null);
     setModalite(m);
     setVue("unite");

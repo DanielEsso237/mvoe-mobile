@@ -12,17 +12,23 @@ export default function FacilitateurAnnuaireScreen() {
   const [contacts, setContacts] = useState<FacilitateurAnnuaireEntry[] | null>(
     null
   );
+  const [repliMessage, setRepliMessage] = useState<string | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
   useEffect(() => {
     getArrondissements().then(setArrondissements);
-    getAnnuaire().then(setContacts);
+    // Contrairement au mock d'avant, le serveur exige un arrondissement :
+    // pas de "tous les arrondissements" possible, on attend un choix.
   }, []);
 
-  const choisirArrondissement = async (id: string | null) => {
+  const choisirArrondissement = async (id: string) => {
     setArrondissementId(id);
     setDropdownOpen(false);
-    setContacts(await getAnnuaire(id ?? undefined));
+    setContacts(null);
+    setRepliMessage(null);
+    const { contacts: liste, message } = await getAnnuaire(id);
+    setContacts(liste);
+    setRepliMessage(message);
   };
 
   const appeler = (telephone: string) => {
@@ -31,7 +37,7 @@ export default function FacilitateurAnnuaireScreen() {
 
   const selectedLabel =
     arrondissements.find((a) => a.id === arrondissementId)?.nom ??
-    "Tous les arrondissements";
+    "Choisir un arrondissement";
 
   return (
     <View style={styles.root}>
@@ -59,12 +65,6 @@ export default function FacilitateurAnnuaireScreen() {
           </TouchableOpacity>
           {dropdownOpen && (
             <View style={styles.dropdownMenu}>
-              <TouchableOpacity
-                style={styles.dropdownItem}
-                onPress={() => choisirArrondissement(null)}
-              >
-                <Text style={styles.dropdownItemText}>Tous les arrondissements</Text>
-              </TouchableOpacity>
               {arrondissements.map((a) => (
                 <TouchableOpacity
                   key={a.id}
@@ -78,7 +78,16 @@ export default function FacilitateurAnnuaireScreen() {
           )}
         </View>
 
-        {contacts && contacts.length === 0 && (
+        {!arrondissementId && (
+          <Text style={styles.emptyText}>
+            Choisissez un arrondissement pour voir les facilitateurs proches
+            de vous.
+          </Text>
+        )}
+
+        {repliMessage && <Text style={styles.repliText}>{repliMessage}</Text>}
+
+        {arrondissementId && contacts && contacts.length === 0 && (
           <Text style={styles.emptyText}>
             Aucun facilitateur actif ici pour l&apos;instant.
           </Text>
@@ -148,6 +157,7 @@ const styles = StyleSheet.create({
   },
   dropdownItemText: { fontSize: 14, color: Colors.text },
   emptyText: { fontSize: 13, color: Colors.textMuted, textAlign: "center", marginTop: 20 },
+  repliText: { fontSize: 12, color: "#92400E", fontStyle: "italic", marginBottom: 4 },
   card: {
     flexDirection: "row",
     alignItems: "center",

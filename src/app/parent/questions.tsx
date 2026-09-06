@@ -16,6 +16,7 @@ import {
 export default function QuestionsScreen() {
   const { parent } = useAuth();
   const estConnecte = !!parent?.token;
+  const parentId = parent?.programme?.id ?? "";
   const [questions, setQuestions] = useState<QuestionSemaine[] | null>(null);
   const [index, setIndex] = useState(0);
   const [optionChoisie, setOptionChoisie] = useState<string | null>(null);
@@ -37,8 +38,8 @@ export default function QuestionsScreen() {
 
   const repondre = async (optionId: string) => {
     setOptionChoisie(optionId);
-    if (estConnecte) {
-      await repondreQuestion(question.id, optionId);
+    if (estConnecte && parentId) {
+      await repondreQuestion(parentId, question.id, optionId);
     }
   };
 

@@ -37,7 +37,8 @@ export interface ParentProgrammeRow {
   code_parent: string;
   code_acces_hash: string;
   langue: string;
-  arrondissement_id: string;
+  arrondissement_id: string | null;
+  api_token: string | null;
 }
 
 export async function trouverSuperviseurParEmail(
@@ -271,6 +272,51 @@ export async function trouverParentParCode(
     [codeParent.trim().toUpperCase()]
   );
   return row ?? null;
+}
+
+/**
+ * Provisionne (ou met à jour) localement un compte parent après un succès
+ * de connexion en ligne. Le serveur ne renvoie ni arrondissement ni portée
+ * à la connexion (juste `code_parent` et `langue`) : `arrondissement_id`
+ * reste donc NULL, ce que la colonne autorise depuis la migration v6.
+ */
+export interface ProvisionParentEnLigne {
+  codeParent: string;
+  codeAccesHash: string;
+  langue: string;
+  apiToken: string;
+}
+
+export async function provisionnerParentEnLigne(
+  input: ProvisionParentEnLigne
+): Promise<ParentProgrammeRow> {
+  const db = await getDb();
+  const codeParent = input.codeParent.trim().toUpperCase();
+  const existant = await trouverParentParCode(codeParent);
+  const id = existant?.id ?? nouvelIdentifiant("parent");
+
+  await db.runAsync(
+    `INSERT INTO parents_programme (id, code_parent, code_acces_hash, langue, api_token)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(code_parent) DO UPDATE SET
+       code_acces_hash = excluded.code_acces_hash,
+       langue = excluded.langue,
+       api_token = excluded.api_token;`,
+    [id, codeParent, input.codeAccesHash, input.langue, input.apiToken]
+  );
+
+  const row = await trouverParentParCode(codeParent);
+  if (!row) throw new Error("Échec du provisionnement local du parent.");
+  return row;
+}
+
+export async function getJetonApiParent(id: string): Promise<string | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ api_token: string | null }>(
+    "SELECT api_token FROM parents_programme WHERE id = ?;",
+    [id]
+  );
+  return row?.api_token ?? null;
 }
 
 export async function verifierMotDePasse(

@@ -2,6 +2,7 @@ import { hashText } from "@/db/crypto";
 import {
   creerSession,
   provisionnerFacilitateurEnLigne,
+  provisionnerParentEnLigne,
   provisionnerSuperviseurEnLigne,
   supprimerSession,
   trouverFacilitateurParEmail,
@@ -11,6 +12,7 @@ import {
   verifierMotDePasse,
 } from "@/db/repositories/auth";
 import { connexionFacilitateurEnLigne } from "@/services/api/facilitateurAuth";
+import { connexionParentEnLigne } from "@/services/api/parentAuth";
 import { connexionSuperviseurEnLigne } from "@/services/api/superviseurAuth";
 import type {
   FacilitateurCompte,
@@ -167,13 +169,31 @@ export async function loginParent(
     throw new ApiError("mineur");
   }
 
-  const row = await trouverParentParCode(input.codeParent);
-  if (!row) {
-    throw new ApiError("Code parent ou code d'accès incorrect.");
+  let row = await trouverParentParCode(input.codeParent);
+  let valide = row
+    ? await verifierMotDePasse(input.codeAcces, row.code_acces_hash)
+    : false;
+
+  // Même schéma que le facilitateur et le superviseur : code inconnu
+  // localement (ou code d'accès local différent) -> on tente une connexion
+  // en ligne, qui provisionne le compte localement en cas de succès.
+  if (!valide) {
+    const enLigne = await connexionParentEnLigne({
+      codeParent: input.codeParent,
+      codeAcces: input.codeAcces,
+    });
+    if (enLigne) {
+      row = await provisionnerParentEnLigne({
+        codeParent: enLigne.parent.codeParent,
+        codeAccesHash: await hashText(input.codeAcces),
+        langue: enLigne.parent.langue,
+        apiToken: enLigne.jeton,
+      });
+      valide = true;
+    }
   }
 
-  const valide = await verifierMotDePasse(input.codeAcces, row.code_acces_hash);
-  if (!valide) {
+  if (!row || !valide) {
     throw new ApiError("Code parent ou code d'accès incorrect.");
   }
 

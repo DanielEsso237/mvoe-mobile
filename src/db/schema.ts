@@ -7,7 +7,7 @@
  * parent) à renvoyer vers l'API Laravel de référence dès que le réseau
  * revient.
  */
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 export const MIGRATIONS: string[] = [
   // v1 — comptes et sessions des trois espaces + file de synchronisation.
@@ -282,5 +282,25 @@ export const MIGRATIONS: string[] = [
   // contrainte n'est nécessaire ici.
   `
   ALTER TABLE superviseurs ADD COLUMN api_token TEXT;
+  `,
+  // v6 — connexion en ligne du parent, même mécanisme que les deux autres
+  // rôles. `arrondissement_id` doit devenir nullable : `POST /parent/session`
+  // ne renvoie ni arrondissement ni portée au login (juste code_parent et
+  // langue), donc rien à y mettre au moment du provisionnement.
+  `
+  CREATE TABLE parents_programme_v6 (
+    id TEXT PRIMARY KEY,
+    code_parent TEXT NOT NULL UNIQUE,
+    code_acces_hash TEXT NOT NULL,
+    langue TEXT NOT NULL,
+    arrondissement_id TEXT,
+    api_token TEXT
+  );
+
+  INSERT INTO parents_programme_v6 (id, code_parent, code_acces_hash, langue, arrondissement_id)
+  SELECT id, code_parent, code_acces_hash, langue, arrondissement_id FROM parents_programme;
+
+  DROP TABLE parents_programme;
+  ALTER TABLE parents_programme_v6 RENAME TO parents_programme;
   `,
 ];

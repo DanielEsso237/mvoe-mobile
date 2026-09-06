@@ -1,5 +1,6 @@
 import ParentHeader from "@/components/parent/ParentHeader";
 import { Colors } from "@/constants/colors";
+import { useAuth } from "@/contexts/AuthContext";
 import { getSituations, poserAssistant } from "@/services/parent";
 import type { AssistantReponse, SituationFrequente } from "@/types";
 import { Ionicons } from "@expo/vector-icons";
@@ -15,6 +16,8 @@ import {
 } from "react-native";
 
 export default function QuestionScreen() {
+  const { parent } = useAuth();
+  const langue = parent?.langue ?? "fr";
   const [situations, setSituations] = useState<SituationFrequente[] | null>(
     null
   );
@@ -23,14 +26,14 @@ export default function QuestionScreen() {
   const [reponse, setReponse] = useState<AssistantReponse | null>(null);
 
   useEffect(() => {
-    getSituations().then(setSituations);
-  }, []);
+    getSituations(langue).then(setSituations);
+  }, [langue]);
 
   const poser = async (situationId?: string) => {
     setInterrogation(true);
     setReponse(null);
     const result = await poserAssistant(
-      situationId ? { situationId } : { texte: texteLibre.trim() }
+      situationId ? { situationId, langue } : { texte: texteLibre.trim(), langue }
     );
     setReponse(result);
     setInterrogation(false);
