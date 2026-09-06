@@ -1,29 +1,20 @@
-import { MOCK_FACILITATEUR_COMPTE } from "@/mocks/facilitateur";
-import { MOCK_PARENT_PROGRAMME } from "@/mocks/parent";
 import {
-  MOCK_SUPERVISEUR_COMPTE,
-  MOCK_SUPERVISEUR_COMPTE_NATIONAL,
-} from "@/mocks/superviseur";
-import type { FacilitateurSession, ParentSession, SuperviseurSession } from "@/types";
-import { ApiError, delay } from "./client";
-
-/**
- * Identifiants de démonstration, en dur, tant qu'il n'y a pas de vrai
- * backend. Ce sont ceux que l'appli affichera dans les écrans de connexion
- * pour permettre de tester chaque espace.
- */
-export const DEMO_CREDENTIALS = {
-  facilitateurTelephone: "699112233",
-  facilitateurCodeAppareil: "123456",
-  facilitateurEmail: "marie.ateba@minproff.cm",
-  facilitateurMotDePasse: "demo1234",
-  superviseurEmail: "paul.nkolo@minproff.cm",
-  superviseurMotDePasse: "demo1234",
-  superviseurNationalEmail: "direction@minproff.cm",
-  superviseurNationalMotDePasse: "demo1234",
-  parentCodeParent: "EB2-01",
-  parentCodeAcces: "1234",
-} as const;
+  creerSession,
+  supprimerSession,
+  trouverFacilitateurParEmail,
+  trouverFacilitateurParTelephone,
+  trouverParentParCode,
+  trouverSuperviseurParEmail,
+  verifierMotDePasse,
+} from "@/db/repositories/auth";
+import type {
+  FacilitateurCompte,
+  FacilitateurSession,
+  ParentSession,
+  SuperviseurCompte,
+  SuperviseurSession,
+} from "@/types";
+import { ApiError } from "./client";
 
 function normaliserTelephone(telephone: string): string {
   return telephone.replace(/\s+/g, "");
@@ -43,30 +34,42 @@ export type LoginFacilitateurInput =
   | LoginFacilitateurParTelephoneInput
   | LoginFacilitateurParEmailInput;
 
+/**
+ * Toute la validation des identifiants se fait maintenant contre la base
+ * SQLite locale (le "backend" tant que l'appareil est hors-ligne), plus
+ * jamais contre une constante JS en mémoire.
+ */
 export async function loginFacilitateur(
   input: LoginFacilitateurInput
 ): Promise<FacilitateurSession> {
-  const valide =
+  const row =
     "telephone" in input
-      ? normaliserTelephone(input.telephone) ===
-          DEMO_CREDENTIALS.facilitateurTelephone &&
-        input.codeAppareil === DEMO_CREDENTIALS.facilitateurCodeAppareil
-      : input.email === DEMO_CREDENTIALS.facilitateurEmail &&
-        input.motDePasse === DEMO_CREDENTIALS.facilitateurMotDePasse;
+      ? await trouverFacilitateurParTelephone(normaliserTelephone(input.telephone))
+      : await trouverFacilitateurParEmail(input.email);
 
-  if (!valide) {
-    return delay(null, 350).then(() => {
-      throw new ApiError("Identifiants incorrects.");
-    });
+  if (!row) {
+    throw new ApiError("Identifiants incorrects.");
   }
 
-  return delay(
-    {
-      token: `mock-facilitateur-token-${MOCK_FACILITATEUR_COMPTE.id}`,
-      compte: MOCK_FACILITATEUR_COMPTE,
-    },
-    350
-  );
+  const valide =
+    "telephone" in input
+      ? await verifierMotDePasse(input.codeAppareil, row.code_appareil_hash)
+      : await verifierMotDePasse(input.motDePasse, row.mot_de_passe_hash);
+
+  if (!valide) {
+    throw new ApiError("Identifiants incorrects.");
+  }
+
+  const token = await creerSession("facilitateur", row.id);
+  const compte: FacilitateurCompte = {
+    id: row.id,
+    nom: row.nom,
+    telephone: row.telephone,
+    email: row.email ?? undefined,
+    arrondissementNom: row.arrondissement_nom,
+  };
+
+  return { token, compte };
 }
 
 export interface LoginSuperviseurInput {
@@ -77,36 +80,29 @@ export interface LoginSuperviseurInput {
 export async function loginSuperviseur(
   input: LoginSuperviseurInput
 ): Promise<SuperviseurSession> {
-  if (
-    input.email === DEMO_CREDENTIALS.superviseurNationalEmail &&
-    input.motDePasse === DEMO_CREDENTIALS.superviseurNationalMotDePasse
-  ) {
-    return delay(
-      {
-        token: `mock-superviseur-token-${MOCK_SUPERVISEUR_COMPTE_NATIONAL.id}`,
-        compte: MOCK_SUPERVISEUR_COMPTE_NATIONAL,
-      },
-      350
-    );
+  const row = await trouverSuperviseurParEmail(input.email);
+  if (!row) {
+    throw new ApiError("Identifiants incorrects.");
   }
 
-  const valide =
-    input.email === DEMO_CREDENTIALS.superviseurEmail &&
-    input.motDePasse === DEMO_CREDENTIALS.superviseurMotDePasse;
-
+  const valide = await verifierMotDePasse(input.motDePasse, row.mot_de_passe_hash);
   if (!valide) {
-    return delay(null, 350).then(() => {
-      throw new ApiError("Identifiants incorrects.");
-    });
+    throw new ApiError("Identifiants incorrects.");
   }
 
-  return delay(
-    {
-      token: `mock-superviseur-token-${MOCK_SUPERVISEUR_COMPTE.id}`,
-      compte: MOCK_SUPERVISEUR_COMPTE,
+  const token = await creerSession("superviseur", row.id);
+  const compte: SuperviseurCompte = {
+    id: row.id,
+    nom: row.nom,
+    email: row.email,
+    portee: {
+      niveau: row.niveau,
+      entiteId: row.entite_id,
+      libelle: row.entite_libelle,
     },
-    350
-  );
+  };
+
+  return { token, compte };
 }
 
 export interface LoginParentInput {
@@ -117,39 +113,50 @@ export interface LoginParentInput {
 }
 
 /**
- * Un mineur n'obtient jamais de session : le serveur web refuse même de
- * chercher le code dans ce cas. On reproduit la même règle ici.
+ * Un mineur n'obtient jamais de session : on ne cherche même pas le code
+ * dans ce cas, exactement comme le fait le serveur de référence.
  */
 export async function loginParent(
   input: LoginParentInput
 ): Promise<ParentSession> {
   if (!input.majeur) {
-    return delay(null, 300).then(() => {
-      throw new ApiError("mineur");
-    });
+    throw new ApiError("mineur");
   }
 
-  const valide =
-    input.codeParent.trim().toUpperCase() ===
-      DEMO_CREDENTIALS.parentCodeParent &&
-    input.codeAcces === DEMO_CREDENTIALS.parentCodeAcces;
+  const row = await trouverParentParCode(input.codeParent);
+  if (!row) {
+    throw new ApiError("Code parent ou code d'accès incorrect.");
+  }
 
+  const valide = await verifierMotDePasse(input.codeAcces, row.code_acces_hash);
   if (!valide) {
-    return delay(null, 350).then(() => {
-      throw new ApiError("Code parent ou code d'accès incorrect.");
-    });
+    throw new ApiError("Code parent ou code d'accès incorrect.");
   }
 
-  return delay(
-    {
-      token: `mock-parent-token-${MOCK_PARENT_PROGRAMME.id}`,
-      langue: input.langue,
-      programme: MOCK_PARENT_PROGRAMME,
+  const token = await creerSession("parent", row.id);
+
+  return {
+    token,
+    langue: input.langue,
+    programme: {
+      id: row.id,
+      codeParent: row.code_parent,
+      langue: row.langue,
+      arrondissementId: row.arrondissement_id,
     },
-    350
-  );
+  };
 }
 
 export function creerSessionParentAnonyme(langue: string): ParentSession {
   return { token: null, langue };
+}
+
+/**
+ * Révoque le jeton côté base locale (l'équivalent de `DELETE /session`
+ * dans l'API de référence). Un jeton anonyme (parent sans code) n'a rien à
+ * révoquer.
+ */
+export async function logout(token: string | null | undefined): Promise<void> {
+  if (!token) return;
+  await supprimerSession(token);
 }
