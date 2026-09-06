@@ -7,7 +7,7 @@
  * parent) à renvoyer vers l'API Laravel de référence dès que le réseau
  * revient.
  */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export const MIGRATIONS: string[] = [
   // v1 — comptes et sessions des trois espaces + file de synchronisation.
@@ -264,5 +264,14 @@ export const MIGRATIONS: string[] = [
 
   DROP TABLE facilitateurs;
   ALTER TABLE facilitateurs_v3 RENAME TO facilitateurs;
+  `,
+  // v4 — téléchargement de la vraie cohorte depuis le serveur de référence.
+  // `module_courant_code` porte le module que `CohorteController::index`
+  // désigne comme "prochaine séance" au moment du téléchargement ; il ne se
+  // met pas à jour tout seul ensuite (il faudrait retélécharger le paquet
+  // pour connaître le module suivant), ce qui est acceptable pour l'usage
+  // actuel du kit.
+  `
+  ALTER TABLE cohortes ADD COLUMN module_courant_code TEXT;
   `,
 ];

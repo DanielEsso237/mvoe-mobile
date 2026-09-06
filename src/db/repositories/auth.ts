@@ -148,6 +148,21 @@ export async function enregistrerJetonApiFacilitateur(
 }
 
 /**
+ * Le jeton d'UN facilitateur précis, par son id local. Contrairement à
+ * `getJetonApiFacilitateurActif`, ne dépend pas de la session en cours :
+ * utile pour un téléchargement déclenché depuis un écran qui connaît déjà
+ * `facilitateurId` (via `useAuth()`).
+ */
+export async function getJetonApiFacilitateur(id: string): Promise<string | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ api_token: string | null }>(
+    "SELECT api_token FROM facilitateurs WHERE id = ?;",
+    [id]
+  );
+  return row?.api_token ?? null;
+}
+
+/**
  * Le jeton du facilitateur actuellement connecté sur cet appareil — un seul
  * kit actif à la fois, voir `getPaquet`. Utilisé par le moteur de
  * synchronisation pour authentifier ses envois vers l'API de référence.

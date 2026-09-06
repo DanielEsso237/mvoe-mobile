@@ -38,10 +38,17 @@ export async function enqueuer(
   return id;
 }
 
+/**
+ * Ne rejoue que les lignes réellement en attente : une ligne déjà marquée
+ * `erreur` a déjà été rejetée une fois par le serveur pour un motif qui ne
+ * changera pas tout seul (format invalide, référence inconnue…) — la
+ * rejouer sans arrêt ne ferait que reproduire le même échec à chaque
+ * passage, et bloquer le reste du lot avec elle.
+ */
 export async function listerEnAttente(): Promise<SyncQueueRow[]> {
   const db = await getDb();
   return db.getAllAsync<SyncQueueRow>(
-    "SELECT * FROM sync_queue WHERE statut != 'synchronise' ORDER BY created_at ASC;"
+    "SELECT * FROM sync_queue WHERE statut = 'en_attente' ORDER BY created_at ASC;"
   );
 }
 

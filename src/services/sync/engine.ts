@@ -8,7 +8,7 @@ import {
   marquerSynchronise,
   type SyncQueueRow,
 } from "@/db/repositories/syncQueue";
-import { ApiNetworkError, apiRequest } from "@/services/api/client";
+import { ApiNetworkError, ApiResponseError, apiRequest } from "@/services/api/client";
 
 const RETRY_INTERVAL_MS = 30000;
 
@@ -23,6 +23,28 @@ interface BilanEvenements {
 }
 
 /**
+ * Laravel valide chaque élément du tableau `evenements` avant même que le
+ * contrôleur ne s'exécute : UN SEUL item malformé fait échouer le lot
+ * entier avec un 422, avant que le serveur n'ait pu accepter les autres.
+ * Le corps de la réponse nomme le champ en cause (`evenements.3.type`) —
+ * on en tire l'index pour savoir LEQUEL retirer de la file, plutôt que de
+ * rejouer indéfiniment un lot qui échouera toujours de la même façon.
+ */
+function extraireIndexEvenementsFautifs(corpsErreur: string): number[] {
+  try {
+    const corps = JSON.parse(corpsErreur) as { errors?: Record<string, unknown> };
+    const indices = new Set<number>();
+    for (const champ of Object.keys(corps.errors ?? {})) {
+      const correspondance = champ.match(/^evenements\.(\d+)\./);
+      if (correspondance) indices.add(Number(correspondance[1]));
+    }
+    return Array.from(indices);
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Le kit facilitateur remonte sa file en UN SEUL envoi par lot vers
  * `/facilitateur/evenements` (voir `EvenementController::store` côté
  * référence) : le serveur répond, UUID par UUID, ce qu'il a accepté, ce
@@ -33,11 +55,21 @@ async function traiterLotEvenements(
   items: SyncQueueRow[]
 ): Promise<void> {
   const parUuid = new Map<string, SyncQueueRow>();
-  const evenements = items.map((item) => {
-    const parsed = JSON.parse(item.payload);
-    parUuid.set(parsed.uuid, item);
-    return parsed;
-  });
+  const evenements: Record<string, unknown>[] = [];
+  for (const item of items) {
+    try {
+      const parsed = JSON.parse(item.payload) as { uuid?: string };
+      if (!parsed.uuid) throw new Error("uuid manquant");
+      parUuid.set(parsed.uuid, item);
+      evenements.push(parsed);
+    } catch {
+      // Charge illisible (jamais produite par ce code, mais possible sur un
+      // reliquat d'une version antérieure) : on la retire définitivement,
+      // la rejouer ne la rendra jamais valide.
+      await marquerErreur(item.id, "Charge illisible, retirée de la file.");
+    }
+  }
+  if (evenements.length === 0) return;
 
   try {
     const jeton = await getJetonApiFacilitateurActif();
@@ -56,8 +88,17 @@ async function traiterLotEvenements(
       if (item) await marquerErreur(item.id, rejet.raison);
     }
   } catch (error) {
-    // Hors-ligne ou serveur injoignable : rien n'est marqué, on rejouera le
-    // même lot au prochain passage. C'est le fonctionnement normal.
+    if (error instanceof ApiResponseError && error.status === 422) {
+      for (const index of extraireIndexEvenementsFautifs(error.message)) {
+        const uuidFautif = evenements[index]?.uuid as string | undefined;
+        const itemFautif = uuidFautif ? parUuid.get(uuidFautif) : undefined;
+        if (itemFautif) {
+          await marquerErreur(itemFautif.id, "Rejeté par le serveur (format invalide).");
+        }
+      }
+    }
+    // Hors-ligne, serveur injoignable, ou item fautif non identifiable :
+    // rien d'autre n'est marqué, on rejouera le reste au prochain passage.
   }
 }
 
