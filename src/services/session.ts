@@ -1,5 +1,7 @@
+import { hashText } from "@/db/crypto";
 import {
   creerSession,
+  provisionnerFacilitateurEnLigne,
   supprimerSession,
   trouverFacilitateurParEmail,
   trouverFacilitateurParTelephone,
@@ -7,6 +9,7 @@ import {
   trouverSuperviseurParEmail,
   verifierMotDePasse,
 } from "@/db/repositories/auth";
+import { connexionFacilitateurEnLigne } from "@/services/api/facilitateurAuth";
 import type {
   FacilitateurCompte,
   FacilitateurSession,
@@ -42,21 +45,39 @@ export type LoginFacilitateurInput =
 export async function loginFacilitateur(
   input: LoginFacilitateurInput
 ): Promise<FacilitateurSession> {
-  const row =
+  let row =
     "telephone" in input
       ? await trouverFacilitateurParTelephone(normaliserTelephone(input.telephone))
       : await trouverFacilitateurParEmail(input.email);
 
-  if (!row) {
-    throw new ApiError("Identifiants incorrects.");
+  let valide = row
+    ? "telephone" in input
+      ? await verifierMotDePasse(input.codeAppareil, row.code_appareil_hash)
+      : await verifierMotDePasse(input.motDePasse, row.mot_de_passe_hash)
+    : false;
+
+  // Compte inconnu localement (ou mot de passe local différent) : on tente
+  // une connexion en ligne contre le serveur de référence. Un succès
+  // provisionne le compte localement, jeton API inclus, pour que la
+  // synchronisation et les prochains logins hors-ligne fonctionnent.
+  if (!valide && "email" in input) {
+    const enLigne = await connexionFacilitateurEnLigne({
+      email: input.email,
+      motDePasse: input.motDePasse,
+    });
+    if (enLigne) {
+      row = await provisionnerFacilitateurEnLigne({
+        email: input.email,
+        motDePasseHash: await hashText(input.motDePasse),
+        nom: enLigne.facilitateur.nom,
+        arrondissementNom: enLigne.facilitateur.arrondissement,
+        apiToken: enLigne.jeton,
+      });
+      valide = true;
+    }
   }
 
-  const valide =
-    "telephone" in input
-      ? await verifierMotDePasse(input.codeAppareil, row.code_appareil_hash)
-      : await verifierMotDePasse(input.motDePasse, row.mot_de_passe_hash);
-
-  if (!valide) {
+  if (!row || !valide) {
     throw new ApiError("Identifiants incorrects.");
   }
 
@@ -64,7 +85,7 @@ export async function loginFacilitateur(
   const compte: FacilitateurCompte = {
     id: row.id,
     nom: row.nom,
-    telephone: row.telephone,
+    telephone: row.telephone ?? undefined,
     email: row.email ?? undefined,
     arrondissementNom: row.arrondissement_nom,
   };

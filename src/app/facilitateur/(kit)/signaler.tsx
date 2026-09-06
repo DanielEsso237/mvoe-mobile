@@ -1,10 +1,16 @@
 import KitHeader from "@/components/facilitateur/KitHeader";
 import { Colors } from "@/constants/colors";
+import { useAuth } from "@/contexts/AuthContext";
 import { getSignalements, soumettreSignalement } from "@/services/facilitateur";
-import type { SignalementFacilitateur, SignalementGraviteFacilitateur } from "@/types";
+import type {
+  SignalementFacilitateur,
+  SignalementGraviteFacilitateur,
+  TypeSignalementFacilitateur,
+} from "@/types";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
+import { useFocusEffect } from "expo-router/react-navigation";
 import { useNavigation, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -14,18 +20,18 @@ import {
   View,
 } from "react-native";
 
-const TYPES = [
-  "Négligence",
-  "Maltraitance",
-  "Violence basée sur le genre",
-  "Travail des enfants",
-  "Autre",
+const TYPES: { value: TypeSignalementFacilitateur; label: string }[] = [
+  { value: "negligence", label: "Négligence" },
+  { value: "maltraitance", label: "Maltraitance" },
+  { value: "vbg", label: "Violence basée sur le genre" },
+  { value: "mariage_precoce", label: "Mariage précoce" },
+  { value: "autre", label: "Autre" },
 ];
 
 const GRAVITES: { value: SignalementGraviteFacilitateur; label: string }[] = [
   { value: "faible", label: "Faible" },
-  { value: "moderee", label: "Modérée" },
-  { value: "grave", label: "Grave" },
+  { value: "moyenne", label: "Moyenne" },
+  { value: "elevee", label: "Élevée" },
 ];
 
 const STATUT_LABEL: Record<string, string> = {
@@ -35,27 +41,41 @@ const STATUT_LABEL: Record<string, string> = {
   clos: "Clos",
 };
 
+const TYPE_LABEL: Record<TypeSignalementFacilitateur, string> = {
+  negligence: "Négligence",
+  maltraitance: "Maltraitance",
+  vbg: "Violence basée sur le genre",
+  mariage_precoce: "Mariage précoce",
+  autre: "Autre",
+};
+
 export default function SignalerScreen() {
   const navigation = useNavigation<DrawerNavigationProp<any>>();
   const router = useRouter();
+  const { facilitateur } = useAuth();
+  const facilitateurId = facilitateur?.compte.id ?? "";
   const [mesSignalements, setMesSignalements] = useState<SignalementFacilitateur[] | null>(
     null
   );
-  const [type, setType] = useState<string | null>(null);
+  const [type, setType] = useState<TypeSignalementFacilitateur | null>(null);
   const [gravite, setGravite] = useState<SignalementGraviteFacilitateur | null>(null);
   const [envoi, setEnvoi] = useState(false);
   const [confirme, setConfirme] = useState(false);
 
-  useEffect(() => {
-    getSignalements().then(setMesSignalements);
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      if (!facilitateurId) return;
+      getSignalements(facilitateurId).then(setMesSignalements);
+      setConfirme(false);
+    }, [facilitateurId])
+  );
 
   const isValid = !!type && !!gravite;
 
   const handleSubmit = async () => {
     if (!isValid) return;
     setEnvoi(true);
-    await soumettreSignalement({ type: type!, gravite: gravite! });
+    await soumettreSignalement({ facilitateurId, type: type!, gravite: gravite! });
     setEnvoi(false);
     setConfirme(true);
   };
@@ -101,11 +121,13 @@ export default function SignalerScreen() {
           <View style={styles.chipRow}>
             {TYPES.map((t) => (
               <TouchableOpacity
-                key={t}
-                style={[styles.chip, type === t && styles.chipActive]}
-                onPress={() => setType(t)}
+                key={t.value}
+                style={[styles.chip, type === t.value && styles.chipActive]}
+                onPress={() => setType(t.value)}
               >
-                <Text style={[styles.chipText, type === t && styles.chipTextActive]}>{t}</Text>
+                <Text style={[styles.chipText, type === t.value && styles.chipTextActive]}>
+                  {t.label}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -154,7 +176,7 @@ export default function SignalerScreen() {
                 ]}
               >
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.rowType}>{s.type}</Text>
+                  <Text style={styles.rowType}>{TYPE_LABEL[s.type]}</Text>
                   <Text style={styles.rowMeta}>
                     {s.soumisLe} · {STATUT_LABEL[s.statut]}
                   </Text>

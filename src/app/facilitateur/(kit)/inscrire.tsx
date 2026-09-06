@@ -1,10 +1,12 @@
 import KitHeader from "@/components/facilitateur/KitHeader";
 import { Colors } from "@/constants/colors";
-import { getPaquetActuel, inscrireParent } from "@/services/facilitateur";
+import { useAuth } from "@/contexts/AuthContext";
+import { getPaquet, inscrireParent } from "@/services/facilitateur";
 import type { CohortePaquet } from "@/types";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
+import { useFocusEffect } from "expo-router/react-navigation";
 import { useNavigation, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -35,6 +37,8 @@ const REVENUS = [
 export default function InscrireScreen() {
   const navigation = useNavigation<DrawerNavigationProp<any>>();
   const router = useRouter();
+  const { facilitateur } = useAuth();
+  const facilitateurId = facilitateur?.compte.id ?? "";
   const [paquet, setPaquet] = useState<CohortePaquet | null | undefined>(
     undefined
   );
@@ -52,9 +56,13 @@ export default function InscrireScreen() {
     null
   );
 
-  useEffect(() => {
-    setPaquet(getPaquetActuel());
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      if (!facilitateurId) return;
+      getPaquet(facilitateurId).then(setPaquet);
+      setResultat(null);
+    }, [facilitateurId])
+  );
 
   if (paquet === undefined) {
     return (
@@ -82,6 +90,7 @@ export default function InscrireScreen() {
   const handleSubmit = async () => {
     setSoumission(true);
     const result = await inscrireParent({
+      cohorteId: paquet.cohorte.id,
       langue,
       situation,
       revenu,

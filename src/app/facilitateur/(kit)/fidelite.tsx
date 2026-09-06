@@ -1,10 +1,12 @@
 import KitHeader from "@/components/facilitateur/KitHeader";
 import { Colors } from "@/constants/colors";
-import { getPaquetActuel, soumettreFidelite } from "@/services/facilitateur";
-import type { CohortePaquet, FideliteReponse } from "@/types";
+import { useAuth } from "@/contexts/AuthContext";
+import { getPaquet, soumettreFidelite } from "@/services/facilitateur";
+import type { CohortePaquet, FideliteReponse, Sequence } from "@/types";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
-import { useNavigation, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useFocusEffect } from "expo-router/react-navigation";
+import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
+import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -26,6 +28,9 @@ const QUALITE_OPTIONS: { value: Qualite; label: string }[] = [
 export default function FideliteScreen() {
   const navigation = useNavigation<DrawerNavigationProp<any>>();
   const router = useRouter();
+  const { facilitateur } = useAuth();
+  const facilitateurId = facilitateur?.compte.id ?? "";
+  const params = useLocalSearchParams<{ seanceId?: string }>();
   const [paquet, setPaquet] = useState<CohortePaquet | null | undefined>(
     undefined
   );
@@ -36,9 +41,15 @@ export default function FideliteScreen() {
   const [envoye, setEnvoye] = useState(false);
   const [envoi, setEnvoi] = useState(false);
 
-  useEffect(() => {
-    setPaquet(getPaquetActuel());
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      if (!facilitateurId) return;
+      getPaquet(facilitateurId).then(setPaquet);
+      setReponses({});
+      setCommentaireGeneral("");
+      setEnvoye(false);
+    }, [facilitateurId])
+  );
 
   if (paquet === undefined) {
     return (
@@ -48,8 +59,10 @@ export default function FideliteScreen() {
     );
   }
 
-  const seance = paquet?.seances.find((s) => s.sequences.length > 0);
-  const sequences = seance?.sequences.filter((s) => s.type === "unite" || s.type === "brise_glace") ?? [];
+  const seanceId = params.seanceId ?? paquet?.seanceEnCours?.id;
+  const sequences: Sequence[] = (paquet?.sequencesModuleEnCours ?? []).filter(
+    (s) => s.type === "unite" || s.type === "brise_glace"
+  );
 
   const setRealisee = (id: string, realisee: boolean) => {
     setReponses((prev) => ({ ...prev, [id]: { ...prev[id], realisee } }));
@@ -64,6 +77,7 @@ export default function FideliteScreen() {
   const nbRepondues = Object.values(reponses).filter((r) => r.realisee !== null && r.realisee !== undefined).length;
 
   const handleEnvoyer = async () => {
+    if (!seanceId) return;
     setEnvoi(true);
     const payload: FideliteReponse[] = sequences
       .filter((seq) => reponses[seq.id]?.realisee !== undefined)
@@ -73,7 +87,7 @@ export default function FideliteScreen() {
         qualite: reponses[seq.id].qualite,
         commentaire: reponses[seq.id].commentaire,
       }));
-    await soumettreFidelite(seance?.id ?? "", payload);
+    await soumettreFidelite(seanceId, payload, commentaireGeneral);
     setEnvoi(false);
     setEnvoye(true);
   };

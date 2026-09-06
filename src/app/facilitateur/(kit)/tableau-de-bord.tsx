@@ -1,12 +1,14 @@
 import KitHeader from "@/components/facilitateur/KitHeader";
 import { Colors } from "@/constants/colors";
+import { useAuth } from "@/contexts/AuthContext";
 import { useNetworkStatus } from "@/hooks/use-network-status";
 import { getTableauDeBord } from "@/services/facilitateur";
 import type { TableauDeBordFacilitateur } from "@/types";
 import { Ionicons } from "@expo/vector-icons";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
+import { useFocusEffect } from "expo-router/react-navigation";
 import { useNavigation, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -20,13 +22,17 @@ export default function TableauDeBordScreen() {
   const navigation = useNavigation<DrawerNavigationProp<any>>();
   const router = useRouter();
   const isOnline = useNetworkStatus();
+  const { facilitateur } = useAuth();
+  const facilitateurId = facilitateur?.compte.id ?? "";
   const [data, setData] = useState<TableauDeBordFacilitateur | null>(null);
 
-  useEffect(() => {
-    if (isOnline !== false) {
-      getTableauDeBord().then(setData);
-    }
-  }, [isOnline]);
+  useFocusEffect(
+    useCallback(() => {
+      if (isOnline !== false && facilitateurId) {
+        getTableauDeBord(facilitateurId).then(setData);
+      }
+    }, [isOnline, facilitateurId])
+  );
 
   if (isOnline === false) {
     return (
