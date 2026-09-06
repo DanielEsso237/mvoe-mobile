@@ -1,7 +1,13 @@
 import KitHeader from "@/components/facilitateur/KitHeader";
 import { Colors } from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
-import { getPaquet, telechargerCohorte } from "@/services/facilitateur";
+import type { CohorteResumeServeur } from "@/services/api/facilitateurCohorte";
+import {
+  getPaquet,
+  listerCohortesEnLigne,
+  telechargerCohorte,
+  telechargerCohorteReelle,
+} from "@/services/facilitateur";
 import type { CohortePaquet } from "@/types";
 import { Ionicons } from "@expo/vector-icons";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
@@ -36,10 +42,20 @@ export default function AccueilScreen() {
   const { facilitateur } = useAuth();
   const facilitateurId = facilitateur?.compte.id ?? "";
   const [paquet, setPaquet] = useState<CohortePaquet | null | undefined>(undefined);
+  const [cohorteDistante, setCohorteDistante] = useState<CohorteResumeServeur | null>(null);
   const [telechargement, setTelechargement] = useState(false);
+  const [erreurTelechargement, setErreurTelechargement] = useState<string | null>(null);
 
-  const charger = useCallback(() => {
-    if (facilitateurId) getPaquet(facilitateurId).then(setPaquet);
+  const charger = useCallback(async () => {
+    if (!facilitateurId) return;
+    const p = await getPaquet(facilitateurId);
+    setPaquet(p);
+    if (!p) {
+      const cohortesEnLigne = await listerCohortesEnLigne(facilitateurId);
+      setCohorteDistante(cohortesEnLigne?.[0] ?? null);
+    } else {
+      setCohorteDistante(null);
+    }
   }, [facilitateurId]);
 
   useFocusEffect(
@@ -53,7 +69,43 @@ export default function AccueilScreen() {
     setTelechargement(true);
     try {
       await telechargerCohorte(paquet.cohorte.id);
-      charger();
+      await charger();
+    } finally {
+      setTelechargement(false);
+    }
+  };
+
+  const handleActualiser = async () => {
+    if (!paquet) return;
+    setTelechargement(true);
+    setErreurTelechargement(null);
+    try {
+      await telechargerCohorteReelle(facilitateurId, Number(paquet.cohorte.id), null);
+      await charger();
+    } catch {
+      setErreurTelechargement(
+        "Impossible d'actualiser depuis le serveur. Vérifiez votre connexion."
+      );
+    } finally {
+      setTelechargement(false);
+    }
+  };
+
+  const handleTelechargerReel = async () => {
+    if (!cohorteDistante) return;
+    setTelechargement(true);
+    setErreurTelechargement(null);
+    try {
+      await telechargerCohorteReelle(
+        facilitateurId,
+        cohorteDistante.id,
+        cohorteDistante.prochaine_seance?.module.id ?? null
+      );
+      await charger();
+    } catch {
+      setErreurTelechargement(
+        "Le téléchargement a échoué. Vérifiez votre connexion et réessayez."
+      );
     } finally {
       setTelechargement(false);
     }
@@ -76,7 +128,31 @@ export default function AccueilScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        {!paquet ? (
+        {!paquet && cohorteDistante ? (
+          <View style={styles.card}>
+            <Ionicons name="cloud-download-outline" size={32} color={Colors.primary} />
+            <Text style={styles.cardTitle}>Télécharger votre cohorte</Text>
+            <Text style={styles.cardSubtitle}>
+              {cohorteDistante.effectif} parents · plafond {cohorteDistante.ratio_max} ·
+              démarrée le {cohorteDistante.date_debut}
+            </Text>
+            {erreurTelechargement && (
+              <Text style={styles.erreurTexte}>{erreurTelechargement}</Text>
+            )}
+            <TouchableOpacity
+              style={styles.telechargerButton}
+              activeOpacity={0.85}
+              disabled={telechargement}
+              onPress={handleTelechargerReel}
+            >
+              <Text style={styles.telechargerButtonText}>
+                {telechargement
+                  ? "Téléchargement…"
+                  : `Télécharger « ${cohorteDistante.libelle} »`}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : !paquet ? (
           <View style={styles.card}>
             <Text style={styles.cardSubtitle}>
               Aucune cohorte ne vous est assignée pour l&apos;instant.
@@ -112,6 +188,14 @@ export default function AccueilScreen() {
                 {paquet.parents.length} parents · plafond {paquet.cohorte.ratioMax} ·
                 démarrée le {paquet.cohorte.dateDebut}
               </Text>
+              {erreurTelechargement && (
+                <Text style={styles.erreurTexte}>{erreurTelechargement}</Text>
+              )}
+              <TouchableOpacity onPress={handleActualiser} disabled={telechargement}>
+                <Text style={styles.actualiserLink}>
+                  {telechargement ? "Actualisation…" : "Actualiser depuis le serveur"}
+                </Text>
+              </TouchableOpacity>
             </View>
 
             {/* Séance */}
@@ -217,6 +301,16 @@ const styles = StyleSheet.create({
     color: Colors.white,
     fontSize: 15,
     fontWeight: "700",
+  },
+  erreurTexte: {
+    fontSize: 13,
+    color: "#DC2626",
+  },
+  actualiserLink: {
+    fontSize: 12,
+    color: Colors.primary,
+    fontWeight: "600",
+    marginTop: 2,
   },
   cohorteTitle: {
     fontSize: 20,

@@ -1,6 +1,7 @@
 import { getDb } from "@/db/client";
 import { nouvelIdentifiant } from "@/db/crypto";
 import { enqueuer } from "@/db/repositories/syncQueue";
+import type { PaquetCohorteServeur, SequenceServeur, UniteServeur } from "@/services/api/facilitateurCohorte";
 import type {
   ActiviteTerrain,
   ActiviteType,
@@ -15,6 +16,7 @@ import type {
   Seance,
   Sequence,
   SequenceType,
+  SequenceUnite,
   SignalementFacilitateur,
   SignalementGraviteFacilitateur,
   TableauDeBordFacilitateur,
@@ -65,6 +67,7 @@ interface CohorteRow {
   ratio_max: number;
   date_debut: string;
   telecharge_le: string | null;
+  module_courant_code: string | null;
 }
 
 export async function getCohorteDuFacilitateur(
@@ -84,6 +87,275 @@ export async function marquerCohorteTelechargee(cohorteId: string): Promise<void
     new Date().toISOString(),
     cohorteId,
   ]);
+}
+
+/**
+ * Le serveur de référence ne connaît que deux types de séquence
+ * (`unite_digitale` / `consigne_animation`, voir `App\Enums\TypeSequence`)
+ * plus un drapeau `est_brise_glace` indépendant — pas les quatre catégories
+ * `brise_glace | unite | echange | cloture` que ce kit utilise depuis le
+ * départ. On les fait correspondre plutôt que de réécrire tout l'écran
+ * Séance : une consigne d'animation non brise-glace devient un "échange",
+ * et la dernière du module devient sa "clôture" — le serveur n'a pas de
+ * notion explicite de clôture, c'est une convention purement locale.
+ */
+function mapperTypeSequence(sequence: SequenceServeur, estDerniere: boolean): SequenceType {
+  if (sequence.est_brise_glace) return "brise_glace";
+  if (sequence.type === "unite_digitale") return "unite";
+  return estDerniere ? "cloture" : "echange";
+}
+
+/**
+ * Notre modèle local ne porte qu'une seule unité numérique par séquence
+ * (`Sequence.unite`), là où le serveur en autorise plusieurs. On ne prend
+ * que la première : c'est la seule observée dans le curriculum actuel, et
+ * l'écran Séance n'a jamais eu besoin d'en afficher plus d'une à la fois.
+ */
+function mapperUnite(unite: UniteServeur | undefined): SequenceUnite | undefined {
+  if (!unite) return undefined;
+
+  const languesDisponibles = Array.from(
+    new Set(
+      unite.realisations
+        .map((r) => r.langue)
+        .filter((langue): langue is string => !!langue)
+    )
+  );
+  const audioParLangue: Record<string, string | undefined> = {};
+  const texteParLangue: Record<string, string | undefined> = {};
+  let pictogrammes: string[] | undefined;
+
+  for (const realisation of unite.realisations) {
+    if (!realisation.langue) continue;
+    if (realisation.modalite === "audio" && realisation.fichier_audio) {
+      audioParLangue[realisation.langue] = realisation.fichier_audio;
+    }
+    if (realisation.modalite === "texte" && realisation.contenu_texte) {
+      texteParLangue[realisation.langue] = realisation.contenu_texte;
+    }
+    if (realisation.pictogrammes?.length) {
+      pictogrammes = realisation.pictogrammes;
+    }
+  }
+
+  return {
+    code: String(unite.id),
+    messageCle: unite.message_cle,
+    languesDisponibles,
+    audioParLangue,
+    texteParLangue,
+    pictogrammes,
+  };
+}
+
+export interface ProvisionnerCohorteReelleInput {
+  facilitateurId: string;
+  cohorteId: number;
+  moduleCourantId: number | null;
+  paquet: PaquetCohorteServeur;
+}
+
+/**
+ * `CohorteController::prochaineSeance` peut désigner un module dont le
+ * contenu n'a pas encore été rédigé (`renseigne: false`, `sequences: []`) —
+ * c'est le cas normal pour un module du programme pas encore écrit. Y faire
+ * confiance aveuglément mènerait à une séance sans aucune séquence. On ne
+ * la garde que si elle a vraiment du contenu, sinon on prend le premier
+ * module renseigné du paquet.
+ */
+function choisirModuleCourant(
+  paquet: PaquetCohorteServeur,
+  suggestionId: number | null
+): number | null {
+  const suggestion = paquet.modules.find((m) => m.id === suggestionId);
+  if (suggestion && suggestion.sequences.length > 0) return suggestion.id;
+
+  const premierRenseigne = paquet.modules.find((m) => m.sequences.length > 0);
+  return premierRenseigne?.id ?? null;
+}
+
+/**
+ * Remplace le paquet local par celui, réel, téléchargé depuis le serveur
+ * de référence. Contrairement au reste du kit, ces lignes ne portent pas
+ * l'UUID d'un événement : elles viennent du serveur, qui a déjà ses
+ * propres identifiants (numériques pour la cohorte/les modules/séquences,
+ * UUID pour les foyers/groupes).
+ */
+export async function provisionnerCohorteReelle(
+  input: ProvisionnerCohorteReelleInput
+): Promise<void> {
+  const db = await getDb();
+  const cohorteId = String(input.cohorteId);
+  const moduleCourantId = choisirModuleCourant(input.paquet, input.moduleCourantId);
+  const arrondissementId = (input.paquet.cohorte.arrondissement ?? "")
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+
+  await db.runAsync(
+    `INSERT INTO cohortes (id, facilitateur_id, libelle, arrondissement_id, ratio_max, date_debut, module_courant_code, telecharge_le)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       facilitateur_id = excluded.facilitateur_id,
+       libelle = excluded.libelle,
+       arrondissement_id = excluded.arrondissement_id,
+       ratio_max = excluded.ratio_max,
+       date_debut = excluded.date_debut,
+       module_courant_code = excluded.module_courant_code,
+       telecharge_le = excluded.telecharge_le;`,
+    [
+      cohorteId,
+      input.facilitateurId,
+      input.paquet.cohorte.libelle,
+      arrondissementId,
+      input.paquet.cohorte.ratio_max,
+      input.paquet.cohorte.date_debut,
+      moduleCourantId !== null ? String(moduleCourantId) : null,
+      new Date().toISOString(),
+    ]
+  );
+
+  for (const module of input.paquet.modules) {
+    const moduleCode = String(module.id);
+    await db.runAsync(
+      `INSERT INTO modules_curriculum (code, titre) VALUES (?, ?)
+       ON CONFLICT(code) DO UPDATE SET titre = excluded.titre;`,
+      [moduleCode, module.titre]
+    );
+
+    const sequencesTriees = [...module.sequences].sort((a, b) => a.ordre - b.ordre);
+    for (let i = 0; i < sequencesTriees.length; i++) {
+      const sequence = sequencesTriees[i];
+      const type = mapperTypeSequence(sequence, i === sequencesTriees.length - 1);
+      const unite = mapperUnite(sequence.unites[0]);
+
+      await db.runAsync(
+        `INSERT INTO sequences_curriculum (
+           id, module_code, ordre, titre, type, duree_minutes,
+           unite_code, unite_message_cle, unite_langues_disponibles,
+           unite_audio_par_langue, unite_texte_par_langue, unite_pictogrammes
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           ordre = excluded.ordre,
+           titre = excluded.titre,
+           type = excluded.type,
+           duree_minutes = excluded.duree_minutes,
+           unite_code = excluded.unite_code,
+           unite_message_cle = excluded.unite_message_cle,
+           unite_langues_disponibles = excluded.unite_langues_disponibles,
+           unite_audio_par_langue = excluded.unite_audio_par_langue,
+           unite_texte_par_langue = excluded.unite_texte_par_langue,
+           unite_pictogrammes = excluded.unite_pictogrammes;`,
+        [
+          `seq-srv-${sequence.id}`,
+          moduleCode,
+          sequence.ordre,
+          sequence.titre,
+          type,
+          sequence.duree_minutes,
+          unite?.code ?? null,
+          unite?.messageCle ?? null,
+          unite ? JSON.stringify(unite.languesDisponibles) : null,
+          unite ? JSON.stringify(unite.audioParLangue) : null,
+          unite ? JSON.stringify(unite.texteParLangue) : null,
+          unite?.pictogrammes ? JSON.stringify(unite.pictogrammes) : null,
+        ]
+      );
+    }
+  }
+
+  for (const parent of input.paquet.parents) {
+    await db.runAsync(
+      `INSERT INTO parents_inscrits (id, cohorte_id, code_parent, repere_local)
+       VALUES (?, ?, ?, NULL)
+       ON CONFLICT(id) DO UPDATE SET cohorte_id = excluded.cohorte_id;`,
+      [`parent-${parent.code_parent}`, cohorteId, parent.code_parent]
+    );
+  }
+
+  for (const foyer of input.paquet.foyers) {
+    await db.runAsync(
+      `INSERT INTO foyers (id, facilitateur_id, localite, nb_adultes, nb_enfants, difficultes_fonctionnelles_foyer, deja_suivi_programme)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         localite = excluded.localite,
+         nb_adultes = excluded.nb_adultes,
+         nb_enfants = excluded.nb_enfants,
+         difficultes_fonctionnelles_foyer = excluded.difficultes_fonctionnelles_foyer,
+         deja_suivi_programme = excluded.deja_suivi_programme;`,
+      [
+        foyer.uuid,
+        input.facilitateurId,
+        foyer.localite,
+        foyer.nb_adultes,
+        foyer.nb_enfants,
+        JSON.stringify(foyer.difficultes ?? []),
+        foyer.deja_suivi_programme ? 1 : 0,
+      ]
+    );
+  }
+
+  for (const groupe of input.paquet.groupes_soutien) {
+    await db.runAsync(
+      `INSERT INTO groupes_soutien (id, facilitateur_id, cohorte_id, libelle, date_creation, derniere_reunion)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         libelle = excluded.libelle,
+         derniere_reunion = excluded.derniere_reunion;`,
+      [
+        groupe.uuid,
+        input.facilitateurId,
+        cohorteId,
+        groupe.libelle,
+        new Date().toISOString(),
+        groupe.derniere_reunion,
+      ]
+    );
+  }
+
+  for (const module of input.paquet.formation) {
+    await db.runAsync(
+      `INSERT INTO modules_formation (code, titre, type, objectif, duree_minutes)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(code) DO UPDATE SET
+         titre = excluded.titre,
+         type = excluded.type,
+         objectif = excluded.objectif,
+         duree_minutes = excluded.duree_minutes;`,
+      [module.code, module.titre, module.type, module.objectif, module.duree_minutes]
+    );
+
+    for (const section of module.sections) {
+      await db.runAsync(
+        `INSERT INTO sections_formation (id, module_code, ordre, titre, duree_minutes, corps, fichier_audio)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           titre = excluded.titre,
+           duree_minutes = excluded.duree_minutes,
+           corps = excluded.corps,
+           fichier_audio = excluded.fichier_audio;`,
+        [
+          `${module.code}-${section.ordre}`,
+          module.code,
+          section.ordre,
+          section.titre,
+          section.duree_minutes,
+          section.contenu_texte,
+          section.fichier_audio,
+        ]
+      );
+    }
+
+    await db.runAsync(
+      `INSERT INTO progression_formation (facilitateur_id, module_code, sections_vues)
+       VALUES (?, ?, ?)
+       ON CONFLICT(facilitateur_id, module_code) DO UPDATE SET
+         sections_vues = excluded.sections_vues;`,
+      [input.facilitateurId, module.code, JSON.stringify(module.sections_vues ?? [])]
+    );
+  }
 }
 
 interface SequenceCurriculumRow {
@@ -212,7 +484,7 @@ export async function getPaquet(facilitateurId: string): Promise<CohortePaquet |
   const seanceEnCours = await getSeanceEnCours(cohorte.id);
   const sequencesModuleEnCours = seanceEnCours
     ? await getSequencesDuModule(seanceEnCours.moduleCode)
-    : await getSequencesDuModule("M2"); // prochain module par défaut du paquet
+    : await getSequencesDuModule(cohorte.module_courant_code ?? "M2");
 
   return {
     cohorte: {

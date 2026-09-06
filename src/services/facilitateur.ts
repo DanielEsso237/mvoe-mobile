@@ -1,5 +1,11 @@
+import { getJetonApiFacilitateur } from "@/db/repositories/auth";
 import * as repo from "@/db/repositories/facilitateur";
 import { listerEnAttente } from "@/db/repositories/syncQueue";
+import {
+  listerCohortesEnLigne as apiListerCohortesEnLigne,
+  telechargerPaquetEnLigne,
+  type CohorteResumeServeur,
+} from "@/services/api/facilitateurCohorte";
 import type {
   ActiviteTerrain,
   ActiviteType,
@@ -50,6 +56,43 @@ export async function getPaquet(facilitateurId: string): Promise<CohortePaquet |
 
 export async function telechargerCohorte(cohorteId: string): Promise<void> {
   await repo.marquerCohorteTelechargee(cohorteId);
+}
+
+/**
+ * Les cohortes réelles du facilitateur, vues du serveur de référence.
+ * Renvoie `null` sans lever d'erreur si le compte n'a pas de jeton API
+ * (jamais connecté en ligne) ou si le serveur est injoignable : l'appelant
+ * retombe alors sur le parcours de démonstration local.
+ */
+export async function listerCohortesEnLigne(
+  facilitateurId: string
+): Promise<CohorteResumeServeur[] | null> {
+  const jeton = await getJetonApiFacilitateur(facilitateurId);
+  if (!jeton) return null;
+  try {
+    return await apiListerCohortesEnLigne(jeton);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Télécharge la vraie cohorte (et son curriculum, ses foyers, groupes et
+ * formation) depuis le serveur de référence, et remplace ce que ce
+ * facilitateur avait localement. Contrairement à `telechargerCohorte`
+ * (démo, local uniquement), exige un jeton API valide.
+ */
+export async function telechargerCohorteReelle(
+  facilitateurId: string,
+  cohorteId: number,
+  moduleCourantId: number | null
+): Promise<void> {
+  const jeton = await getJetonApiFacilitateur(facilitateurId);
+  if (!jeton) {
+    throw new Error("Reconnectez-vous en ligne avant de télécharger votre cohorte.");
+  }
+  const paquet = await telechargerPaquetEnLigne(jeton, cohorteId);
+  await repo.provisionnerCohorteReelle({ facilitateurId, cohorteId, moduleCourantId, paquet });
 }
 
 export async function demarrerSeance(
