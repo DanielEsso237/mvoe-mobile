@@ -1,5 +1,6 @@
 import AccountMenu from "@/components/common/AccountMenu";
 import { Colors } from "@/constants/colors";
+import { useAuth } from "@/contexts/AuthContext";
 import { MOCK_ARRONDISSEMENTS } from "@/mocks/common";
 import { getRegistre } from "@/services/superviseur";
 import type { Facilitateur } from "@/types";
@@ -26,13 +27,15 @@ function typeJuridiqueLabel(value: Facilitateur["typeJuridique"]) {
 export default function RegistreScreen() {
   const navigation = useNavigation<DrawerNavigationProp<any>>();
   const router = useRouter();
+  const { superviseur } = useAuth();
+  const superviseurId = superviseur?.compte.id ?? "";
   const [facilitateurs, setFacilitateurs] = useState<Facilitateur[] | null>(null);
   const [selectedArrondissement, setSelectedArrondissement] = useState(TOUS);
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
   useEffect(() => {
-    getRegistre().then(setFacilitateurs);
-  }, []);
+    if (superviseurId) getRegistre(superviseurId).then(setFacilitateurs);
+  }, [superviseurId]);
 
   const arrondissementOptions = useMemo(
     () => [TOUS, ...MOCK_ARRONDISSEMENTS.map((a) => a.nom)],

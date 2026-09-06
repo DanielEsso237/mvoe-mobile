@@ -1,6 +1,7 @@
 import { getDb } from "@/db/client";
 import { nouvelIdentifiant } from "@/db/crypto";
 import { enqueuer } from "@/db/repositories/syncQueue";
+import { slugify } from "@/db/slug";
 import type { PaquetCohorteServeur, SequenceServeur, UniteServeur } from "@/services/api/facilitateurCohorte";
 import type {
   ActiviteTerrain,
@@ -187,12 +188,7 @@ export async function provisionnerCohorteReelle(
   const db = await getDb();
   const cohorteId = String(input.cohorteId);
   const moduleCourantId = choisirModuleCourant(input.paquet, input.moduleCourantId);
-  const arrondissementId = (input.paquet.cohorte.arrondissement ?? "")
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
+  const arrondissementId = slugify(input.paquet.cohorte.arrondissement ?? "");
 
   await db.runAsync(
     `INSERT INTO cohortes (id, facilitateur_id, libelle, arrondissement_id, ratio_max, date_debut, module_courant_code, telecharge_le)

@@ -21,7 +21,9 @@ function formatDate(date: Date) {
   const dd = String(date.getDate()).padStart(2, "0");
   const mm = String(date.getMonth() + 1).padStart(2, "0");
   const yyyy = date.getFullYear();
-  return `${dd}/${mm}/${yyyy}`;
+  // ISO (yyyy-mm-dd) : le seul format que la validation `date` de Laravel
+  // ne peut pas interpréter à l'envers (jour/mois inversés).
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 export default function EnregistrerScreen() {
@@ -58,16 +60,13 @@ export default function EnregistrerScreen() {
     setErrorMessage(null);
     setSubmitting(true);
     try {
-      const result = await enregistrerFacilitateur({
+      const result = await enregistrerFacilitateur(compte.id, {
         nom,
         telephone,
         email: email.trim() || undefined,
         typeJuridique,
         dateFormationInitiale: dateFormation,
         organisationRattachement: organisation.trim() || undefined,
-        arrondissementId: compte.portee.entiteId ?? "",
-        arrondissementNom: compte.portee.libelle,
-        departementNom: compte.portee.libelle,
       });
       setIdentifiants(result.identifiants);
     } catch (error) {
@@ -303,7 +302,9 @@ export default function EnregistrerScreen() {
               <View style={styles.field}>
                 <Text style={styles.fieldLabel}>Date de formation initiale</Text>
                 <View style={styles.dateBox}>
-                  <Text style={styles.dateText}>{dateFormation}</Text>
+                  <Text style={styles.dateText}>
+                    {dateFormation.split("-").reverse().join("/")}
+                  </Text>
                 </View>
               </View>
 

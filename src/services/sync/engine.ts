@@ -1,6 +1,6 @@
 import NetInfo from "@react-native-community/netinfo";
 
-import { getJetonApiFacilitateurActif } from "@/db/repositories/auth";
+import { getJetonApiActif, getJetonApiFacilitateurActif } from "@/db/repositories/auth";
 import { EVENEMENTS_ENDPOINT } from "@/db/repositories/facilitateur";
 import {
   listerEnAttente,
@@ -103,10 +103,12 @@ async function traiterLotEvenements(
 }
 
 async function traiterUnParUn(items: SyncQueueRow[]): Promise<void> {
+  const jeton = await getJetonApiActif();
   for (const item of items) {
     try {
       await apiRequest(item.endpoint, {
         method: item.method,
+        token: jeton,
         body: JSON.parse(item.payload),
       });
       await marquerSynchronise(item.id);

@@ -1,16 +1,27 @@
 import type { Portee } from "./common";
+import type {
+  SignalementGraviteFacilitateur,
+  TypeSignalementFacilitateur,
+} from "./facilitateur";
 
+/** Valeurs alignées sur `App\Enums\TypeJuridique` côté serveur. */
 export type TypeJuridique =
-  | "association"
+  | "agent_public"
+  | "enseignant"
   | "ong"
-  | "structure_etatique"
-  | "independant";
+  | "association_femmes"
+  | "groupe_religieux"
+  | "relais_communautaire"
+  | "vacataire";
 
 export const TYPES_JURIDIQUES: { value: TypeJuridique; label: string }[] = [
-  { value: "association", label: "Association" },
+  { value: "agent_public", label: "Agent public" },
+  { value: "enseignant", label: "Enseignant" },
   { value: "ong", label: "ONG" },
-  { value: "structure_etatique", label: "Structure étatique" },
-  { value: "independant", label: "Indépendant" },
+  { value: "association_femmes", label: "Association de femmes" },
+  { value: "groupe_religieux", label: "Groupe religieux" },
+  { value: "relais_communautaire", label: "Relais communautaire" },
+  { value: "vacataire", label: "Vacataire" },
 ];
 
 export interface SuperviseurCompte {
@@ -25,7 +36,13 @@ export interface Facilitateur {
   nom: string;
   telephone: string;
   email?: string;
-  typeJuridique: TypeJuridique;
+  /**
+   * Le registre serveur (`GET /superviseur/facilitateurs`) renvoie déjà le
+   * libellé français, pas la valeur brute de l'enum — contrairement à
+   * `EnregistrerFacilitateurInput.typeJuridique` (le formulaire de
+   * création), qui lui envoie bien la valeur `TypeJuridique`.
+   */
+  typeJuridique: string;
   organisationRattachement?: string;
   arrondissementId: string;
   arrondissementNom: string;
@@ -93,12 +110,16 @@ export interface TableauDeBordIndicateurs {
 }
 
 export type SignalementStatut = "soumis" | "examine" | "oriente" | "clos";
-export type SignalementGravite = "faible" | "moderee" | "grave";
+/**
+ * Mêmes valeurs que `SignalementGraviteFacilitateur` (`faible|moyenne|elevee`,
+ * alignées sur `App\Enums\GraviteSignalement`) : un seul et même signalement
+ * traverse les deux espaces, pas de raison d'avoir deux enums différentes.
+ */
+export type SignalementGravite = SignalementGraviteFacilitateur;
 
 export interface Signalement {
   id: string;
-  situation: string;
-  type: string;
+  type: TypeSignalementFacilitateur;
   gravite: SignalementGravite;
   statut: SignalementStatut;
   arrondissementId: string;

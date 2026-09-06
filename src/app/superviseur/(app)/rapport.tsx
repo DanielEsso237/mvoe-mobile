@@ -1,5 +1,6 @@
 import AccountMenu from "@/components/common/AccountMenu";
 import { Colors } from "@/constants/colors";
+import { useAuth } from "@/contexts/AuthContext";
 import { getRapport } from "@/services/superviseur";
 import type { Rapport } from "@/types";
 import { Ionicons } from "@expo/vector-icons";
@@ -75,6 +76,8 @@ function buildReportHtml(report: Rapport) {
 export default function RapportScreen() {
   const navigation = useNavigation<DrawerNavigationProp<any>>();
   const router = useRouter();
+  const { superviseur } = useAuth();
+  const superviseurId = superviseur?.compte.id ?? "";
 
   const [year, setYear] = useState("2026");
   const [trimestre, setTrimestre] = useState<1 | 2 | 3 | 4>(3);
@@ -86,8 +89,9 @@ export default function RapportScreen() {
   const [exportError, setExportError] = useState<string | null>(null);
 
   const fetchReport = (y: string, t: 1 | 2 | 3 | 4) => {
+    if (!superviseurId) return;
     setLoading(true);
-    getRapport(Number(y), t)
+    getRapport(superviseurId, Number(y), t)
       .then(setReport)
       .finally(() => setLoading(false));
   };
