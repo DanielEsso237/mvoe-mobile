@@ -7,7 +7,7 @@
  * parent) à renvoyer vers l'API Laravel de référence dès que le réseau
  * revient.
  */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 export const MIGRATIONS: string[] = [
   // v1 — comptes et sessions des trois espaces + file de synchronisation.
@@ -273,5 +273,14 @@ export const MIGRATIONS: string[] = [
   // actuel du kit.
   `
   ALTER TABLE cohortes ADD COLUMN module_courant_code TEXT;
+  `,
+  // v5 — connexion en ligne du superviseur, même mécanisme que le
+  // facilitateur (v3) : `api_token` porte le jeton Sanctum obtenu au
+  // premier login en ligne, réutilisé par le moteur de synchronisation.
+  // `email`/`mot_de_passe_hash` sont déjà NOT NULL pour ce rôle (pas de
+  // canal téléphone comme le facilitateur), donc aucune relaxation de
+  // contrainte n'est nécessaire ici.
+  `
+  ALTER TABLE superviseurs ADD COLUMN api_token TEXT;
   `,
 ];

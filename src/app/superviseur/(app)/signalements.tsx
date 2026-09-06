@@ -1,7 +1,13 @@
 import AccountMenu from "@/components/common/AccountMenu";
 import { Colors } from "@/constants/colors";
+import { useAuth } from "@/contexts/AuthContext";
 import { getSignalements, updateSignalement } from "@/services/superviseur";
-import type { Signalement, SignalementGravite, SignalementStatut } from "@/types";
+import type {
+  Signalement,
+  SignalementGravite,
+  SignalementStatut,
+  TypeSignalementFacilitateur,
+} from "@/types";
 import { Ionicons } from "@expo/vector-icons";
 import { DrawerNavigationProp } from "@react-navigation/drawer";
 import { useNavigation, useRouter } from "expo-router";
@@ -19,10 +25,10 @@ import {
 
 function getGraviteStyle(gravite: SignalementGravite) {
   switch (gravite) {
-    case "grave":
-      return { bg: "#EF4444", color: Colors.white, label: "Grave" };
-    case "moderee":
-      return { bg: "#6B7280", color: Colors.white, label: "Modérée" };
+    case "elevee":
+      return { bg: "#EF4444", color: Colors.white, label: "Élevée" };
+    case "moyenne":
+      return { bg: "#6B7280", color: Colors.white, label: "Moyenne" };
     case "faible":
     default:
       return { bg: "#D1FAE5", color: "#047857", label: "Faible" };
@@ -36,11 +42,21 @@ const STATUT_LABEL: Record<SignalementStatut, string> = {
   clos: "Clos",
 };
 
+const TYPE_LABEL: Record<TypeSignalementFacilitateur, string> = {
+  negligence: "Négligence",
+  maltraitance: "Maltraitance",
+  vbg: "Violence basée sur le genre",
+  mariage_precoce: "Mariage précoce",
+  autre: "Autre",
+};
+
 type TabKey = "attente" | "historique";
 
 export default function SignalementsScreen() {
   const navigation = useNavigation<DrawerNavigationProp<any>>();
   const router = useRouter();
+  const { superviseur } = useAuth();
+  const superviseurId = superviseur?.compte.id ?? "";
   const [signalements, setSignalements] = useState<Signalement[] | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>("attente");
   const [selected, setSelected] = useState<Signalement | null>(null);
@@ -49,11 +65,9 @@ export default function SignalementsScreen() {
   const [saving, setSaving] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
 
-  const load = () => getSignalements().then(setSignalements);
-
   useEffect(() => {
-    load();
-  }, []);
+    if (superviseurId) getSignalements(superviseurId).then(setSignalements);
+  }, [superviseurId]);
 
   const filteredSignalements = useMemo(() => {
     if (!signalements) return [];
@@ -67,7 +81,7 @@ export default function SignalementsScreen() {
     const list = signalements ?? [];
     const aTraiter = list.filter((s) => s.statut !== "clos").length;
     const dontGraves = list.filter(
-      (s) => s.statut !== "clos" && s.gravite === "grave"
+      (s) => s.statut !== "clos" && s.gravite === "elevee"
     ).length;
     const recusEnTout = list.length;
     const delaiMoyenJours = list.length
@@ -96,8 +110,25 @@ export default function SignalementsScreen() {
         statut: nouveauStatut,
         suiteDonnee: suiteDonnee.trim() || undefined,
       });
+      // La mise à jour part dans la file de synchronisation, pas
+      // immédiatement vers le serveur : on reflète le changement
+      // localement plutôt que de recharger une liste qui ne le montrerait
+      // pas encore.
+      setSignalements((prev) =>
+        prev
+          ? prev.map((s) =>
+              s.id === selected.id
+                ? {
+                    ...s,
+                    statut: nouveauStatut,
+                    suiteDonnee: suiteDonnee.trim() || s.suiteDonnee,
+                    joursAttente: nouveauStatut === "soumis" ? s.joursAttente : 0,
+                  }
+                : s
+            )
+          : prev
+      );
       closeModal();
-      load();
     } catch (error) {
       setModalError(
         error instanceof Error ? error.message : "La mise à jour a échoué."
@@ -293,7 +324,7 @@ export default function SignalementsScreen() {
                     onPress={() => openModal(s)}
                   >
                     <View style={styles.situationColumn}>
-                      <Text style={styles.situationText}>{s.situation}</Text>
+                      <Text style={styles.situationText}>{TYPE_LABEL[s.type]}</Text>
                       <Text style={styles.dateText}>
                         {s.soumisLe} · {STATUT_LABEL[s.statut]}
                         {s.statut !== "clos" ? ` · ${s.joursAttente} j` : ""}
@@ -343,7 +374,9 @@ export default function SignalementsScreen() {
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={styles.modalTitle}>{selected?.situation}</Text>
+              <Text style={styles.modalTitle}>
+                {selected ? TYPE_LABEL[selected.type] : ""}
+              </Text>
               <Text style={styles.modalMeta}>
                 Reçu le {selected?.soumisLe} · {selected?.arrondissementNom} ·
                 remonté par {selected?.facilitateurNom}

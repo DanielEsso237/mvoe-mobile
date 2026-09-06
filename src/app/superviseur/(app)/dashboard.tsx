@@ -31,11 +31,12 @@ export default function DashboardScreen() {
   const navigation = useNavigation<DrawerNavigationProp<any>>();
   const router = useRouter();
   const { superviseur } = useAuth();
+  const superviseurId = superviseur?.compte.id ?? "";
   const [data, setData] = useState<TableauDeBordIndicateurs | null>(null);
 
   useEffect(() => {
-    getTableauDeBord().then(setData);
-  }, []);
+    if (superviseurId) getTableauDeBord(superviseurId).then(setData);
+  }, [superviseurId]);
 
   if (!data) {
     return (

@@ -1,5 +1,6 @@
 import AccountMenu from "@/components/common/AccountMenu";
 import { Colors } from "@/constants/colors";
+import { useAuth } from "@/contexts/AuthContext";
 import { getCohortes, updateParametreCohorte } from "@/services/superviseur";
 import type { Cohorte } from "@/types";
 import { Ionicons } from "@expo/vector-icons";
@@ -19,6 +20,8 @@ const RATIO_OPTIONS = [10, 15, 20, 25];
 
 export default function ParametresScreen() {
   const navigation = useNavigation<DrawerNavigationProp<any>>();
+  const { superviseur } = useAuth();
+  const superviseurId = superviseur?.compte.id ?? "";
   const [cohortes, setCohortes] = useState<Cohorte[] | null>(null);
   const [confirmations, setConfirmations] = useState<
     Record<string, { avant: number; apres: number }>
@@ -26,11 +29,11 @@ export default function ParametresScreen() {
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   useEffect(() => {
-    getCohortes().then(setCohortes);
+    if (superviseurId) getCohortes(superviseurId).then(setCohortes);
     return () => {
       Object.values(timers.current).forEach(clearTimeout);
     };
-  }, []);
+  }, [superviseurId]);
 
   const handleChangeRatio = async (cohorte: Cohorte, nouveauRatio: number) => {
     const avant = cohorte.ratioMax;
@@ -44,7 +47,7 @@ export default function ParametresScreen() {
         : prev
     );
 
-    await updateParametreCohorte(cohorte.id, nouveauRatio);
+    await updateParametreCohorte(superviseurId, cohorte.id, nouveauRatio);
 
     setConfirmations((prev) => ({
       ...prev,

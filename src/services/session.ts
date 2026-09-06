@@ -2,6 +2,7 @@ import { hashText } from "@/db/crypto";
 import {
   creerSession,
   provisionnerFacilitateurEnLigne,
+  provisionnerSuperviseurEnLigne,
   supprimerSession,
   trouverFacilitateurParEmail,
   trouverFacilitateurParTelephone,
@@ -10,9 +11,11 @@ import {
   verifierMotDePasse,
 } from "@/db/repositories/auth";
 import { connexionFacilitateurEnLigne } from "@/services/api/facilitateurAuth";
+import { connexionSuperviseurEnLigne } from "@/services/api/superviseurAuth";
 import type {
   FacilitateurCompte,
   FacilitateurSession,
+  NiveauPortee,
   ParentSession,
   SuperviseurCompte,
   SuperviseurSession,
@@ -101,13 +104,33 @@ export interface LoginSuperviseurInput {
 export async function loginSuperviseur(
   input: LoginSuperviseurInput
 ): Promise<SuperviseurSession> {
-  const row = await trouverSuperviseurParEmail(input.email);
-  if (!row) {
-    throw new ApiError("Identifiants incorrects.");
+  let row = await trouverSuperviseurParEmail(input.email);
+  let valide = row
+    ? await verifierMotDePasse(input.motDePasse, row.mot_de_passe_hash)
+    : false;
+
+  // Même schéma que le facilitateur : compte inconnu localement (ou mot de
+  // passe local différent) -> on tente une connexion en ligne, qui
+  // provisionne le compte localement en cas de succès.
+  if (!valide) {
+    const enLigne = await connexionSuperviseurEnLigne({
+      email: input.email,
+      motDePasse: input.motDePasse,
+    });
+    if (enLigne) {
+      row = await provisionnerSuperviseurEnLigne({
+        email: input.email,
+        motDePasseHash: await hashText(input.motDePasse),
+        nom: enLigne.superviseur.nom,
+        niveau: enLigne.superviseur.niveau as NiveauPortee,
+        entiteLibelle: enLigne.superviseur.portee,
+        apiToken: enLigne.jeton,
+      });
+      valide = true;
+    }
   }
 
-  const valide = await verifierMotDePasse(input.motDePasse, row.mot_de_passe_hash);
-  if (!valide) {
+  if (!row || !valide) {
     throw new ApiError("Identifiants incorrects.");
   }
 

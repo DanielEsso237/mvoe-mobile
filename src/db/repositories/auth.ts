@@ -1,5 +1,6 @@
 import { getDb } from "@/db/client";
 import { nouvelIdentifiant, verifyHash } from "@/db/crypto";
+import { slugify } from "@/db/slug";
 import type { NiveauPortee } from "@/types";
 
 export interface SuperviseurRow {
@@ -10,6 +11,7 @@ export interface SuperviseurRow {
   niveau: NiveauPortee;
   entite_id: string | null;
   entite_libelle: string;
+  api_token: string | null;
 }
 
 export interface FacilitateurRow {
@@ -106,12 +108,7 @@ export async function provisionnerFacilitateurEnLigne(
   const db = await getDb();
   const existant = await trouverFacilitateurParEmail(input.email);
   const id = existant?.id ?? nouvelIdentifiant("fac");
-  const arrondissementId = input.arrondissementNom
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
+  const arrondissementId = slugify(input.arrondissementNom);
 
   await db.runAsync(
     `INSERT INTO facilitateurs (
@@ -175,6 +172,91 @@ export async function getJetonApiFacilitateurActif(): Promise<string | null> {
      JOIN facilitateurs f ON f.id = s.account_id
      WHERE s.type = 'facilitateur'
      ORDER BY s.created_at DESC
+     LIMIT 1;`
+  );
+  return row?.api_token ?? null;
+}
+
+/**
+ * Provisionne (ou met à jour) localement un compte superviseur après un
+ * succès de connexion en ligne. Contrairement au facilitateur, ce rôle a
+ * toujours email+mot de passe : aucune colonne n'a besoin d'être relâchée.
+ * `entite_id` est un repère local (dérivé du libellé) puisque le serveur ne
+ * renvoie qu'un libellé de portée au login, pas d'identifiant numérique.
+ */
+export interface ProvisionSuperviseurEnLigne {
+  email: string;
+  motDePasseHash: string;
+  nom: string;
+  niveau: NiveauPortee;
+  entiteLibelle: string;
+  apiToken: string;
+}
+
+export async function provisionnerSuperviseurEnLigne(
+  input: ProvisionSuperviseurEnLigne
+): Promise<SuperviseurRow> {
+  const db = await getDb();
+  const existant = await trouverSuperviseurParEmail(input.email);
+  const id = existant?.id ?? nouvelIdentifiant("sup");
+  const entiteId = slugify(input.entiteLibelle);
+
+  await db.runAsync(
+    `INSERT INTO superviseurs (id, nom, email, mot_de_passe_hash, niveau, entite_id, entite_libelle, api_token)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(email) DO UPDATE SET
+       nom = excluded.nom,
+       mot_de_passe_hash = excluded.mot_de_passe_hash,
+       niveau = excluded.niveau,
+       entite_id = excluded.entite_id,
+       entite_libelle = excluded.entite_libelle,
+       api_token = excluded.api_token;`,
+    [
+      id,
+      input.nom,
+      input.email,
+      input.motDePasseHash,
+      input.niveau,
+      entiteId,
+      input.entiteLibelle,
+      input.apiToken,
+    ]
+  );
+
+  const row = await trouverSuperviseurParEmail(input.email);
+  if (!row) throw new Error("Échec du provisionnement local du superviseur.");
+  return row;
+}
+
+export async function getJetonApiSuperviseur(id: string): Promise<string | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ api_token: string | null }>(
+    "SELECT api_token FROM superviseurs WHERE id = ?;",
+    [id]
+  );
+  return row?.api_token ?? null;
+}
+
+/**
+ * Le jeton du compte actuellement connecté sur cet appareil, facilitateur
+ * OU superviseur selon celui des deux qui s'est connecté en dernier — un
+ * seul rôle actif à la fois. Utilisé par le moteur de synchronisation pour
+ * les écritures génériques (`traiterUnParUn`), qui ne savent pas d'avance
+ * de quel espace elles viennent.
+ */
+export async function getJetonApiActif(): Promise<string | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ api_token: string | null }>(
+    `SELECT api_token FROM (
+       SELECT f.api_token AS api_token, s.created_at AS created_at
+       FROM sessions s JOIN facilitateurs f ON f.id = s.account_id
+       WHERE s.type = 'facilitateur'
+       UNION ALL
+       SELECT sv.api_token AS api_token, s.created_at AS created_at
+       FROM sessions s JOIN superviseurs sv ON sv.id = s.account_id
+       WHERE s.type = 'superviseur'
+     )
+     ORDER BY created_at DESC
      LIMIT 1;`
   );
   return row?.api_token ?? null;
