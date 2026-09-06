@@ -8,14 +8,17 @@ import React, {
   useState,
 } from "react";
 
+import { getDb } from "@/db/client";
 import {
   loginFacilitateur as loginFacilitateurService,
   loginParent as loginParentService,
   loginSuperviseur as loginSuperviseurService,
+  logout as logoutService,
   LoginFacilitateurInput,
   LoginParentInput,
   LoginSuperviseurInput,
 } from "@/services/session";
+import { demarrerMoteurSynchronisation } from "@/services/sync/engine";
 import type { FacilitateurSession, ParentSession, SuperviseurSession } from "@/types";
 
 const STORAGE_KEYS = {
@@ -66,6 +69,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     (async () => {
+      // La base locale (SQLite) tient lieu de backend hors-ligne : elle doit
+      // être ouverte, migrée et amorcée avant toute tentative de connexion.
+      await getDb();
+      demarrerMoteurSynchronisation();
+
       const [facilitateur, parent, superviseur] = await Promise.all([
         readStorage<FacilitateurSession>(STORAGE_KEYS.facilitateur),
         readStorage<ParentSession>(STORAGE_KEYS.parent),
@@ -107,19 +115,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logoutFacilitateur = useCallback(async () => {
+    await logoutService(state.facilitateur?.token);
     await writeStorage(STORAGE_KEYS.facilitateur, null);
     setState((s) => ({ ...s, facilitateur: null }));
-  }, []);
+  }, [state.facilitateur]);
 
   const logoutParent = useCallback(async () => {
+    await logoutService(state.parent?.token);
     await writeStorage(STORAGE_KEYS.parent, null);
     setState((s) => ({ ...s, parent: null }));
-  }, []);
+  }, [state.parent]);
 
   const logoutSuperviseur = useCallback(async () => {
+    await logoutService(state.superviseur?.token);
     await writeStorage(STORAGE_KEYS.superviseur, null);
     setState((s) => ({ ...s, superviseur: null }));
-  }, []);
+  }, [state.superviseur]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
