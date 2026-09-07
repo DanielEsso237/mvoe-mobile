@@ -38,9 +38,12 @@ export default function AccountMenu({
     router.push(parametresRoute as any);
   };
 
+  // Pas de navigation manuelle après déconnexion : voir
+  // FacilitateurAccountMenu.tsx pour l'explication (même mécanisme
+  // `Stack.Protected` côté superviseur).
   const logout = () => {
     close();
-    logoutSuperviseur().then(() => router.replace(loginRoute as any));
+    logoutSuperviseur();
   };
 
   return (

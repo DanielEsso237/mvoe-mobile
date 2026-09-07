@@ -1,19 +1,33 @@
+import { useAuth } from "@/contexts/AuthContext";
 import { Stack } from "expo-router";
 
+/**
+ * Le passage de l'écran de connexion (un Stack simple) vers « (kit) » (un
+ * Drawer) via `router.replace()` fait planter Fabric en production
+ * ("child already has a parent") : désactiver l'animation n'y change rien
+ * (bug confirmé par capture logcat sur l'APK réel, pas une hypothèse). La
+ * vraie solution, documentée par Expo lui-même pour ce cas précis, est de
+ * ne plus naviguer à la main : `Stack.Protected` bascule seul entre les
+ * deux groupes d'écrans selon l'état de connexion, sans jamais imposer un
+ * remplacement impératif entre deux navigateurs distincts.
+ */
 export default function FacilitateurLayout() {
+  const { facilitateur } = useAuth();
+
   return (
     <Stack
       screenOptions={{
         headerShown: false,
         contentStyle: { backgroundColor: "transparent" },
-        // Le passage de l'écran de connexion (simple) vers « (kit) » (un
-        // Drawer) laisse les deux arbres de vues natives montés en même
-        // temps le temps de l'animation par défaut — Fabric peut alors
-        // essayer d'attacher la même vue à deux parents et planter
-        // ("child already has a parent") en production. Sans animation,
-        // le changement est instantané, sans fenêtre de recouvrement.
-        animation: "none",
       }}
-    />
+    >
+      <Stack.Protected guard={!facilitateur}>
+        <Stack.Screen name="index" />
+        <Stack.Screen name="email" />
+      </Stack.Protected>
+      <Stack.Protected guard={!!facilitateur}>
+        <Stack.Screen name="(kit)" />
+      </Stack.Protected>
+    </Stack>
   );
 }

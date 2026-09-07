@@ -4,12 +4,10 @@ import SupervisorForm from "@/components/login/SupervisorForm";
 import { Colors } from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
 import { ApiError } from "@/services/client";
-import { useRouter } from "expo-router";
 import { useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 
 export default function SuperviseurLoginScreen() {
-  const router = useRouter();
   const { loginSuperviseur } = useAuth();
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -18,8 +16,8 @@ export default function SuperviseurLoginScreen() {
     setErrorMessage(null);
     setLoading(true);
     try {
+      // Pas de navigation manuelle : voir facilitateur/index.tsx.
       await loginSuperviseur({ email, motDePasse });
-      router.replace("/superviseur/dashboard");
     } catch (error) {
       setErrorMessage(
         error instanceof ApiError ? error.message : "Impossible de se connecter."

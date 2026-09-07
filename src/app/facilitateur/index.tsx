@@ -18,8 +18,10 @@ export default function FacilitateurKitScreen() {
     setErrorMessage(null);
     setLoading(true);
     try {
+      // Pas de navigation manuelle : `Stack.Protected` (voir _layout.tsx)
+      // bascule seul vers « (kit) » dès que le contexte d'authentification
+      // se met à jour.
       await loginFacilitateur({ telephone, codeAppareil });
-      router.replace("/facilitateur/accueil");
     } catch (error) {
       setErrorMessage(
         error instanceof ApiError ? error.message : "Impossible de se connecter."

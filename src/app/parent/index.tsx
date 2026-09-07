@@ -26,8 +26,8 @@ export default function ParentScreen() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleConsulter = async () => {
+    // Pas de navigation manuelle : voir facilitateur/index.tsx.
     await setParentSession(creerSessionParentAnonyme(langue ?? "fr"));
-    router.replace("/parent/accueil");
   };
 
   const handleOuvrirSession = async () => {
@@ -38,13 +38,13 @@ export default function ParentScreen() {
     setErrorMessage(null);
     setLoading(true);
     try {
+      // Pas de navigation manuelle : voir facilitateur/index.tsx.
       await loginParent({
         codeParent,
         codeAcces,
         majeur,
         langue: langue ?? "fr",
       });
-      router.replace("/parent/accueil");
     } catch (error) {
       if (error instanceof ApiError && error.message === "mineur") {
         setEtape("refus_mineur");

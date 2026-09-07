@@ -1,6 +1,5 @@
 import { Colors } from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
-import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
   Modal,
@@ -12,15 +11,18 @@ import {
 } from "react-native";
 
 export default function FacilitateurAccountMenu() {
-  const router = useRouter();
   const { facilitateur, logoutFacilitateur } = useAuth();
   const [open, setOpen] = useState(false);
 
   const close = () => setOpen(false);
 
+  // Pas de navigation manuelle après déconnexion : `Stack.Protected`
+  // (voir facilitateur/_layout.tsx) rebascule seul vers l'écran de
+  // connexion dès que le contexte se met à jour — un `router.replace`
+  // ici provoquerait le même crash Fabric qu'à la connexion.
   const logout = () => {
     close();
-    logoutFacilitateur().then(() => router.replace("/facilitateur"));
+    logoutFacilitateur();
   };
 
   const letter = facilitateur?.compte.nom.charAt(0) ?? "?";

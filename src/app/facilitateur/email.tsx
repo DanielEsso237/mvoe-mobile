@@ -18,8 +18,8 @@ export default function FacilitateurEmailScreen() {
     setErrorMessage(null);
     setLoading(true);
     try {
+      // Voir facilitateur/index.tsx pour l'explication.
       await loginFacilitateur({ email, motDePasse });
-      router.replace("/facilitateur/accueil");
     } catch (error) {
       setErrorMessage(
         error instanceof ApiError ? error.message : "Impossible de se connecter."

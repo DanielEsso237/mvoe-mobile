@@ -13,8 +13,11 @@ export default function ParentHeader({ title, showBack = true }: Props) {
   const router = useRouter();
   const { parent, setParentSession } = useAuth();
 
+  // Pas de navigation manuelle après sortie : voir
+  // FacilitateurAccountMenu.tsx pour l'explication (même mécanisme
+  // `Stack.Protected` côté parent).
   const handleSortir = () => {
-    setParentSession(null).then(() => router.replace("/parent"));
+    setParentSession(null);
   };
 
   return (
