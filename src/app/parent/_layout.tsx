@@ -7,6 +7,8 @@ export default function ParentLayout() {
       screenOptions={{
         headerShown: false,
         contentStyle: { backgroundColor: 'transparent' },
+        // Voir facilitateur/_layout.tsx pour l'explication.
+        animation: 'none',
       }}
     />
   );

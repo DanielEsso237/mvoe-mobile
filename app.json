@@ -18,6 +18,21 @@
     "experiments": {
       "typedRoutes": true,
       "tsconfigPaths": true
+    },
+    "android": {
+      "package": "com.mvoe.app",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      ]
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "59e950d2-c950-4cea-b120-99a95dda67ee"
+      }
     }
   }
 }
